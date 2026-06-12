@@ -1,0 +1,50 @@
+{
+    "enabled": {
+        "description": "【总开关】启用情绪状态机",
+        "hint": "关闭后不监听消息、不注入 prompt、不更新状态",
+        "type": "bool",
+        "default": true
+    },
+    "only_group": {
+        "description": "【作用域】仅群聊生效",
+        "hint": "关闭后私聊也会维护独立情绪状态",
+        "type": "bool",
+        "default": true
+    },
+    "inject_enabled": {
+        "description": "【Prompt 注入】在 LLM 请求前注入情绪状态摘要",
+        "hint": "注入内容很短，只作为语气连续性参考；不会要求模型明说数值",
+        "type": "bool",
+        "default": true
+    },
+    "persist_state": {
+        "description": "【持久化】保存情绪状态到本地 JSON",
+        "hint": "开启后重启 AstrBot 仍能保留各会话的情绪状态",
+        "type": "bool",
+        "default": true
+    },
+    "state_path": {
+        "description": "【持久化】状态文件路径",
+        "hint": "留空则使用 data/plugin_data/astrbot_plugin_emotion_state_machine/emotion_state.json",
+        "type": "string",
+        "default": ""
+    },
+    "save_interval_seconds": {
+        "description": "【持久化】自动保存最小间隔（秒）",
+        "hint": "普通消息更新不会每次立刻落盘；手动命令和退出会强制保存",
+        "type": "float",
+        "default": 10.0
+    },
+    "decay_half_life_seconds": {
+        "description": "【状态机】情绪回归基线半衰期（秒）",
+        "hint": "数值越小，情绪越快回到默认状态；900 表示约 15 分钟半衰期",
+        "type": "float",
+        "default": 900.0
+    },
+    "active_window_seconds": {
+        "description": "【群聊稀释】活跃用户统计窗口（秒）",
+        "hint": "群公共情绪会按活跃人数做 1/sqrt(n) 稀释，避免单个用户强烈污染整个群状态",
+        "type": "float",
+        "default": 300.0
+    }
+}
