@@ -90,6 +90,58 @@ Use this as subtle continuity only. Do not mention numeric scores unless explici
 ## 下一步可扩展方向
 
 - 接入 aiocqhttp 戳一戳 notice，将真实戳一戳映射到 `poke` 信号。
-- 暴露插件间 API，让 social_context / heartflow 读取状态。
 - 支持 LLM judge 对复杂消息做结构化 signal 判定。
 - 增加跨群 user-global 长期关系层。
+
+## Public API for other plugins
+
+其他 AstrBot 插件可以通过 `context.get_registered_star("astrbot_plugin_emotion_state_machine")` 获取本插件实例，并调用下面的方法读写情绪状态。**所有方法都会对 `scope` / `user_id` 做内部归一化**，外部不需要预先 trim。
+
+### 关键约定
+
+- **Scope 必须复用**。其他插件要读写情绪时，请用 `get_scope(event)` 拿 scope key，不要自己根据 `group_id` 拼字符串——否则会落到和内置 observer 不同的 scope。
+- **写入会触发持久化**。读取不会。
+- **未知 signal 抛 `ValueError`**，调用前可用 `list_signals()` 校验。
+
+### 读取状态
+
+| 方法 | 用途 |
+| --- | --- |
+| `get_scope(event)` | 从 AstrBot event 计算 scope key。 |
+| `get_combined_state(scope, user_id="", *, apply_decay=True)` | 合成视图（group + relation + label）。 |
+| `get_group_state(scope, *, apply_decay=True)` | 仅群公共情绪快照。 |
+| `get_relation_state(scope, user_id, *, apply_decay=True)` | 仅用户私有关系快照。 |
+| `list_signals()` | 返回支持的 signal 名称列表。 |
+| `render_state_text(scope, user_id="")` | 与 `/emotion_state` 一致的人类可读文本。 |
+| `build_prompt_block(scope, user_id="")` | 与内置 LLM 注入一致的 prompt block。 |
+
+### 写入状态
+
+| 方法 | 用途 |
+| --- | --- |
+| `observe_text(scope, text, *, user_id="", mentioned=False)` | 从原始文本推断信号并应用。 |
+| `apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external")` | 手动施加一个已知 signal。未知 signal 抛 `ValueError`。 |
+| `reset_scope(scope)` | 重置整个 scope（group + 所有 relations，行为同 `/emotion_reset`）。 |
+| `force_decay(scope, *, now=None)` | 立即对群公共情绪执行一次衰减，可选传 `now` 推进时钟。 |
+
+### 使用示例
+
+```python
+# 在另一个插件里
+machine = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
+if machine is None:
+    return  # 情绪状态机插件未加载
+
+# 写入
+machine.apply_signal(
+    scope=machine.get_scope(event),
+    user_id=str(event.get_sender_id()),
+    signal="praise",
+    intensity=1.0,
+    reason="auto-detected thanks",
+)
+
+# 读取
+view = machine.get_combined_state(scope="group-123", user_id="user-a")
+print(view.label, view.group.valence, view.relation.trust)
+```

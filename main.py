@@ -19,18 +19,28 @@ from astrbot.core.config.astrbot_config import AstrBotConfig
 
 try:
     from .emotion_engine import (
+        CombinedEmotionView,
         EmotionEvent,
         EmotionStateMachine,
+        GroupEmotionSnapshot,
+        UserRelationSnapshot,
         build_prompt_block,
         format_combined_view,
+        normalize_scope,
+        normalize_user_id,
         signal_names,
     )
 except ImportError:  # pragma: no cover - allow direct script imports in tests
     from emotion_engine import (
+        CombinedEmotionView,
         EmotionEvent,
         EmotionStateMachine,
+        GroupEmotionSnapshot,
+        UserRelationSnapshot,
         build_prompt_block,
         format_combined_view,
+        normalize_scope,
+        normalize_user_id,
         signal_names,
     )
 
@@ -245,6 +255,171 @@ class EmotionStateMachinePlugin(Star):
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         event.set_result(event.plain_result(build_prompt_block(scope, view)))
+
+    # ------------------------------------------------------------------
+    # Public API for other plugins
+    # ------------------------------------------------------------------
+    #
+    # Other plugins can obtain this plugin's instance via
+    #     self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
+    # and then call the methods below. All public methods:
+    #   - normalize scope / user_id inputs,
+    #   - return engine-native objects (no dicts),
+    #   - do NOT trigger persistence on every read (only writes do),
+    #   - keep behavior identical to the built-in /commands.
+    #
+    # Scope convention: other plugins MUST compute the scope via get_scope()
+    # (or pass a scope string that we normalize here). Computing the scope
+    # ad-hoc will cause state fragmentation.
+
+    def get_scope(self, event: AstrMessageEvent) -> str:
+        """Compute the state scope key from an AstrBot event.
+
+        Other plugins should call this to compute the same scope key the
+        built-in message observer uses, otherwise reads/writes will land in
+        a different scope and look invisible.
+        """
+        return self._scope_id(event)
+
+    def get_combined_state(
+        self,
+        scope: str,
+        user_id: str = "",
+        *,
+        apply_decay: bool = True,
+    ) -> CombinedEmotionView:
+        """Read the combined emotion view (group + relation + label) for a
+        scope+user. An empty user_id skips the per-user relation layer."""
+        norm_scope = normalize_scope(scope)
+        norm_user = normalize_user_id(user_id) if user_id else ""
+        return self.machine.get_combined(
+            norm_scope, norm_user or None, apply_decay=apply_decay
+        )
+
+    def get_group_state(
+        self,
+        scope: str,
+        *,
+        apply_decay: bool = True,
+    ) -> GroupEmotionSnapshot:
+        """Read only the group-level emotion snapshot for a scope."""
+        return self.machine.get_group(
+            normalize_scope(scope), apply_decay=apply_decay
+        )
+
+    def get_relation_state(
+        self,
+        scope: str,
+        user_id: str,
+        *,
+        apply_decay: bool = True,
+    ) -> UserRelationSnapshot:
+        """Read only the per-user relation snapshot for scope+user."""
+        return self.machine.get_relation(
+            normalize_scope(scope),
+            normalize_user_id(user_id),
+            apply_decay=apply_decay,
+        )
+
+    def observe_text(
+        self,
+        scope: str,
+        text: str,
+        *,
+        user_id: str = "",
+        mentioned: bool = False,
+    ) -> CombinedEmotionView:
+        """Infer signals from raw text and apply them to the state.
+
+        Prefer this over apply_signal() when the caller has raw user text
+        rather than a pre-classified signal name. Persists state.
+        """
+        norm_scope = normalize_scope(scope)
+        norm_user = normalize_user_id(user_id) if user_id else ""
+        view = self.machine.observe_text(
+            norm_scope, text, user_id=norm_user or None, mentioned=mentioned
+        )
+        self._save_state()
+        return view
+
+    def apply_signal(
+        self,
+        scope: str,
+        user_id: str,
+        signal: str,
+        *,
+        intensity: float = 1.0,
+        reason: str = "external",
+    ) -> CombinedEmotionView:
+        """Manually apply a named signal to both group and relation layers.
+
+        `signal` must be one of `list_signals()`. Unknown names raise
+        ValueError. Persists state.
+        """
+        available = signal_names()
+        if signal not in available:
+            raise ValueError(
+                f"Unknown signal: {signal!r}. Available: {', '.join(available)}"
+            )
+        norm_scope = normalize_scope(scope)
+        norm_user = normalize_user_id(user_id)
+        view = self.machine.apply_interaction(
+            norm_scope,
+            norm_user,
+            EmotionEvent(signal=signal, intensity=intensity, reason=reason),
+        )
+        self._save_state()
+        return view
+
+    def reset_scope(self, scope: str) -> GroupEmotionSnapshot:
+        """Reset a scope entirely: clears the group snapshot AND all
+        per-user relations under that scope (matches the behavior of the
+        built-in /emotion_reset command). Persists state.
+        """
+        snap = self.machine.reset(normalize_scope(scope))
+        self._save_state(force=True)
+        return snap
+
+    def force_decay(
+        self,
+        scope: str,
+        *,
+        now: float | None = None,
+    ) -> GroupEmotionSnapshot:
+        """Force an immediate decay pass on a scope's group snapshot and
+        persist. Useful for plugins that want to bound 'staleness' before
+        reading state.
+
+        `now` is the reference timestamp for the decay calculation; defaults
+        to `time.time()`. Pass an explicit value to deterministically
+        advance the clock (e.g. in tests or when replaying buffered
+        events).
+        """
+        snap = self.machine.decay(normalize_scope(scope), now=now)
+        self._save_state()
+        return snap
+
+    def build_prompt_block(self, scope: str, user_id: str = "") -> str:
+        """Build the same prompt block the built-in LLM injector inserts.
+
+        Other plugins that assemble their own system prompts can call this
+        to embed an identical block without going through the standard
+        on_llm_request hook (e.g. when injecting into a judge model instead
+        of the main reply model).
+        """
+        view = self.get_combined_state(scope, user_id)
+        return build_prompt_block(normalize_scope(scope), view)
+
+    def render_state_text(self, scope: str, user_id: str = "") -> str:
+        """Human-readable rendering of the current state, identical to the
+        /emotion_state command output. Useful for plugin debug/log lines."""
+        view = self.get_combined_state(scope, user_id)
+        return format_combined_view(view)
+
+    def list_signals(self) -> list[str]:
+        """Names of signals the engine understands. Use this to validate
+        signal arguments before calling apply_signal()."""
+        return signal_names()
 
     async def terminate(self):
         self._save_state(force=True)
