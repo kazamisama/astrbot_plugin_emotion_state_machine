@@ -64,5 +64,12 @@
         "hint": "公式 1/n^exponent，0.5=sqrt 温和（默认），0.0=不稀释，1.0=线性衰减；范围 0.0–2.0",
         "type": "float",
         "default": 0.5
+    },
+    "disabled_signals": {
+        "description": "【信号过滤】禁用的 signal 列表",
+        "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",
+        "type": "list",
+        "default": [],
+        "items": {"type": "string"}
     }
 }

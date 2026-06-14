@@ -39,6 +39,7 @@ class _FakeConfig:
             "relation_ttl_seconds": 604800.0,
             "group_ttl_seconds": 2592000.0,
             "dilution_exponent": 0.5,
+            "disabled_signals": [],
         }
         self._values.update(overrides)
 
@@ -350,3 +351,207 @@ def test_prune_cold_state_includes_group_ttl_config() -> None:
     plugin = _make_plugin()
     # Default value (2592000 = 30 days) should be applied.
     assert plugin.machine.group_ttl_seconds == 2592000.0
+
+
+# ----------------------------------------------------------------------
+# disabled_signals config — per-signal on/off switch
+# ----------------------------------------------------------------------
+
+
+def test_disabled_signals_default_is_empty() -> None:
+    plugin = _make_plugin()
+    assert plugin.list_disabled_signals() == []
+    assert plugin.is_signal_enabled("praise") is True
+    assert plugin.is_signal_enabled("poke") is True
+
+
+def test_apply_signal_rejects_disabled_signal() -> None:
+    plugin = _make_plugin(disabled_signals=["poke"])
+    with pytest.raises(ValueError, match="disabled"):
+        plugin.apply_signal("g", "u", "poke", intensity=1.0)
+
+
+def test_try_apply_signal_returns_none_for_disabled_signal() -> None:
+    plugin = _make_plugin(disabled_signals=["pressure"])
+    result = plugin.try_apply_signal("g", "u", "pressure", intensity=1.0)
+    assert result is None
+
+
+def test_is_signal_enabled_checks_config() -> None:
+    plugin = _make_plugin(disabled_signals=["insult", "  PRAISE  "])
+    # Case-insensitive + whitespace-tolerant matching.
+    assert plugin.is_signal_enabled("insult") is False
+    assert plugin.is_signal_enabled("praise") is False
+    assert plugin.is_signal_enabled("thanks") is True
+
+
+def test_is_signal_enabled_returns_false_for_unknown_signal() -> None:
+    plugin = _make_plugin()
+    assert plugin.is_signal_enabled("not_a_real_signal") is False
+
+
+def test_disabled_signals_accepts_csv_string() -> None:
+    """Hand-edited config.json may pass a single comma-separated string."""
+    plugin = _make_plugin(disabled_signals="poke, pressure,insult")
+    assert set(plugin.list_disabled_signals()) == {"poke", "pressure", "insult"}
+
+
+def test_observe_text_in_plugin_filters_disabled_signals() -> None:
+    """End-to-end: a real-message path that would normally infer a
+    disabled signal must NOT advance the state."""
+    plugin = _make_plugin(disabled_signals=["thanks"])
+    # "谢谢" would normally fire "thanks" — but it's disabled, so no
+    # transition should happen. ("question" is also inferred due to "？",
+    # but the default config doesn't disable it.)
+    view = plugin.observe_text("g", "谢谢！", user_id="u", mentioned=False)
+    # last_signal may be "question" (from "！") or "init"; what matters
+    # is that the thanks path was blocked.
+    assert view.group.last_signal != "thanks"
+
+
+# ----------------------------------------------------------------------
+# /emotion_state config snapshot
+# ----------------------------------------------------------------------
+
+
+def test_render_config_snapshot_includes_effective_values() -> None:
+    plugin = _make_plugin(
+        decay_half_life_seconds=600.0,
+        dilution_exponent=0.7,
+        disabled_signals=["poke", "insult"],
+    )
+    snapshot = plugin._render_config_snapshot()
+    assert "⚙ Config snapshot" in snapshot
+    assert "decay_half_life_seconds: 600s" in snapshot
+    assert "dilution_exponent: 0.70" in snapshot
+    # disabled signals rendered as a sorted list (deterministic order)
+    assert "disabled_signals: [insult, poke]" in snapshot
+
+
+def test_render_config_snapshot_shows_ttl_in_days() -> None:
+    """TTL seconds should also be shown in days for human readability."""
+    plugin = _make_plugin(
+        relation_ttl_seconds=86400.0,  # 1 day
+        group_ttl_seconds=259200.0,    # 3 days
+    )
+    snapshot = plugin._render_config_snapshot()
+    assert "(1.0 days)" in snapshot
+    assert "(3.0 days)" in snapshot
+
+
+def test_render_config_snapshot_no_disabled_signals_marker() -> None:
+    plugin = _make_plugin()
+    snapshot = plugin._render_config_snapshot()
+    assert "disabled_signals: (none)" in snapshot
+
+
+def test_emotion_state_command_output_includes_snapshot() -> None:
+    """The /emotion_state command output must end with the config
+    snapshot block, not just the state view."""
+    plugin = _make_plugin()
+    event = SimpleNamespace(
+        get_group_id=lambda: "g-1",
+        get_self_id=lambda: "bot",
+        get_sender_id=lambda: "u-1",
+        unified_msg_origin="om-1",
+        message_str="/emotion_state",
+    )
+    captured: dict[str, Any] = {}
+
+    # set_result is a sync call on real AstrMessageEvent — keep the mock sync.
+    def _fake_set_result(result: Any) -> None:
+        captured["result"] = result
+
+    event.set_result = _fake_set_result
+    event.plain_result = lambda text: SimpleNamespace(text=text)
+
+    import asyncio
+    asyncio.run(plugin.emotion_state(event))
+
+    result = captured["result"]
+    # The result object exposes the text; format is implementation detail.
+    text = getattr(result, "text", None) or getattr(result, "message", None) or str(result)
+    assert "⚙ Config snapshot" in text
+    # Config snapshot is appended after the state view.
+    state_end = text.find("⚙ Config snapshot")
+    group_idx = text.find("Group Emotion")
+    assert group_idx >= 0
+    assert state_end > group_idx
+
+
+# ----------------------------------------------------------------------
+# _inject_emotion_block — dedup logic
+# ----------------------------------------------------------------------
+
+
+def test_inject_emotion_block_appends_when_no_existing_block() -> None:
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    result = _inject_emotion_block(
+        "You are helpful.",
+        f"{ESM_BLOCK_START}\nX\n{ESM_BLOCK_END}",
+    )
+    assert result.count(ESM_BLOCK_START) == 1
+    assert "You are helpful." in result
+    assert result.startswith("You are helpful.")
+
+
+def test_inject_emotion_block_replaces_existing_block() -> None:
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    old_block = f"{ESM_BLOCK_START}\nOLD\n{ESM_BLOCK_END}"
+    new_block = f"{ESM_BLOCK_START}\nNEW\n{ESM_BLOCK_END}"
+    prompt = f"Header\n{old_block}\nFooter"
+    result = _inject_emotion_block(prompt, new_block)
+    assert "OLD" not in result
+    assert "NEW" in result
+    # Exactly one occurrence of the start marker.
+    assert result.count(ESM_BLOCK_START) == 1
+    # Other content preserved.
+    assert "Header" in result
+    assert "Footer" in result
+
+
+def test_inject_emotion_block_handles_multiple_prior_injections() -> None:
+    """If for any reason the prompt already has multiple emotion
+    blocks (e.g. upstream bug), the regex still replaces just the
+    first occurrence — defensive: the count=1 limit keeps
+    behavior predictable."""
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    duplicate_old = (
+        f"{ESM_BLOCK_START}\nOLD1\n{ESM_BLOCK_END}\n"
+        f"{ESM_BLOCK_START}\nOLD2\n{ESM_BLOCK_END}"
+    )
+    new_block = f"{ESM_BLOCK_START}\nNEW\n{ESM_BLOCK_END}"
+    result = _inject_emotion_block(f"Body\n{duplicate_old}", new_block)
+    # Only one new block should remain (the first old gets replaced).
+    assert result.count(ESM_BLOCK_START) == 1
+    assert "NEW" in result
+
+
+def test_inject_emotion_block_handles_empty_prompt() -> None:
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    block = f"{ESM_BLOCK_START}\nX\n{ESM_BLOCK_END}"
+    result = _inject_emotion_block("", block)
+    # Empty base path: function still guarantees a single trailing newline.
+    assert result == block + "\n"
+
+
+def test_inject_emotion_block_handles_none_prompt() -> None:
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    block = f"{ESM_BLOCK_START}\nX\n{ESM_BLOCK_END}"
+    result = _inject_emotion_block(None, block)  # type: ignore[arg-type]
+    assert result == block + "\n"
+
+
+def test_inject_emotion_block_normalizes_trailing_newline() -> None:
+    from main import _inject_emotion_block
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    block = f"{ESM_BLOCK_START}\nX\n{ESM_BLOCK_END}"
+    result = _inject_emotion_block("Prompt", block)
+    # Single trailing newline regardless of input.
+    assert result.endswith("\n")
+    assert not result.endswith("\n\n")

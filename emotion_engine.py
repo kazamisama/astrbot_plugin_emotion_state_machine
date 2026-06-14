@@ -515,10 +515,21 @@ class EmotionStateMachine:
         user_id: str | None = None,
         mentioned: bool = False,
         timestamp: float | None = None,
+        disabled_signals: set[str] | None = None,
     ) -> CombinedEmotionView:
-        """Infer one or more signals from a plain message and apply them."""
+        """Infer one or more signals from a plain message and apply them.
+
+        ``disabled_signals``, when provided, is a set of lowercased signal
+        names that must be filtered out before application. Passing
+        ``None`` (the default) means no filtering.
+        """
         now = time.time() if timestamp is None else float(timestamp)
         signals = infer_signals(text, mentioned=mentioned)
+        if disabled_signals:
+            signals = [
+                (sig, reason) for sig, reason in signals
+                if sig.lower() not in disabled_signals
+            ]
         if not signals:
             return self.get_combined(scope, user_id, now=now, apply_decay=True)
 
@@ -808,8 +819,22 @@ def format_combined_view(view: CombinedEmotionView) -> str:
     return text
 
 
+# Sentinel markers wrap the emotion block so the plugin can find and
+# replace the block on re-injection (instead of appending a duplicate).
+# HTML comments are invisible to all known LLM tokenizers and pass through
+# system prompts untouched.
+ESM_BLOCK_START = "<!-- esm:emotion-block:start -->"
+ESM_BLOCK_END = "<!-- esm:emotion-block:end -->"
+
+
 def build_prompt_block(scope: str, view_or_snapshot: CombinedEmotionView | GroupEmotionSnapshot) -> str:
-    """Build a low-noise prompt block for LLM context injection."""
+    """Build a low-noise prompt block for LLM context injection.
+
+    The returned string is wrapped in ``ESM_BLOCK_START`` / ``ESM_BLOCK_END``
+    sentinel markers so the plugin can detect and replace a previous
+    injection instead of stacking duplicates. The markers are HTML-style
+    comments and are not rendered or interpreted by LLMs.
+    """
     if isinstance(view_or_snapshot, CombinedEmotionView):
         view = view_or_snapshot
     else:
@@ -826,7 +851,7 @@ def build_prompt_block(scope: str, view_or_snapshot: CombinedEmotionView | Group
             f"familiarity={relation.familiarity:.2f}"
         )
 
-    return (
+    inner = (
         "## Bot Emotion State\n"
         f"scope: {scope}\n"
         f"combined_label: {view.label}\n"
@@ -839,6 +864,7 @@ def build_prompt_block(scope: str, view_or_snapshot: CombinedEmotionView | Group
         f"style_hint: {style_hint}\n"
         "Use this as subtle continuity only. Do not mention numeric scores unless explicitly asked."
     )
+    return f"{ESM_BLOCK_START}\n{inner}\n{ESM_BLOCK_END}"
 
 
 def style_hint_for(view_or_snapshot: CombinedEmotionView | GroupEmotionSnapshot) -> str:

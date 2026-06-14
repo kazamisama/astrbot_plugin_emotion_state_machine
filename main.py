@@ -9,6 +9,7 @@ inject a compact emotion block before LLM requests.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from astrbot.core.config.astrbot_config import AstrBotConfig
 
 try:
     from .emotion_engine import (
+        ESM_BLOCK_END,
+        ESM_BLOCK_START,
         CombinedEmotionView,
         EmotionEvent,
         EmotionStateMachine,
@@ -32,6 +35,8 @@ try:
     )
 except ImportError:  # pragma: no cover - allow direct script imports in tests
     from emotion_engine import (
+        ESM_BLOCK_END,
+        ESM_BLOCK_START,
         CombinedEmotionView,
         EmotionEvent,
         EmotionStateMachine,
@@ -43,6 +48,42 @@ except ImportError:  # pragma: no cover - allow direct script imports in tests
         normalize_user_id,
         signal_names,
     )
+
+
+# Compiled once at module load — the sentinels are static, so the
+# find-and-replace pattern doesn't need to be rebuilt per injection.
+_ESM_BLOCK_PATTERN = re.compile(
+    re.escape(ESM_BLOCK_START) + r".*?" + re.escape(ESM_BLOCK_END),
+    re.DOTALL,
+)
+
+
+def _inject_emotion_block(system_prompt: str, block: str) -> str:
+    """Inject ``block`` into ``system_prompt``, replacing any prior
+    emotion block identified by the sentinel markers.
+
+    - If the system prompt already contains an emotion block (start +
+      end markers), the entire range is replaced with ``block``.
+    - Otherwise the block is appended after a blank line, or at the
+      start if the prompt is empty.
+
+    The result is normalized so that there is exactly one trailing
+    newline, regardless of which branch ran.
+    """
+    base = (system_prompt or "").rstrip()
+    if _ESM_BLOCK_PATTERN.search(base):
+        # Remove ALL existing emotion blocks first, then append the new
+        # one. Two-step guarantees the invariant "exactly one emotion
+        # block in the prompt" even when upstream code left duplicates
+        # behind (a single regex sub would copy the new block into
+        # every match).
+        cleaned = _ESM_BLOCK_PATTERN.sub("", base).rstrip()
+        result = cleaned + "\n\n" + block
+    elif base:
+        result = base + "\n\n" + block
+    else:
+        result = block
+    return result.rstrip() + "\n"
 
 
 class EmotionStateMachinePlugin(Star):
@@ -96,6 +137,36 @@ class EmotionStateMachinePlugin(Star):
         if min_value is not None:
             value = max(min_value, value)
         return value
+
+    def _cfg_list(self, key: str, default: list[str] | None = None) -> list[str]:
+        """Read a list-of-strings config value, tolerating common shapes.
+
+        Returns a normalized list of stripped, lowercase strings. Silently
+        drops non-string entries — a malformed config should not break
+        the plugin.
+        """
+        if default is None:
+            default = []
+        raw = self.config.get(key, default)
+        if raw is None:
+            return list(default)
+        if isinstance(raw, str):
+            # Support a single comma-separated string for hand-edited
+            # config.json files.
+            raw = [part.strip() for part in raw.split(",") if part.strip()]
+        if not isinstance(raw, list):
+            return list(default)
+        result: list[str] = []
+        for item in raw:
+            if isinstance(item, str):
+                stripped = item.strip().lower()
+                if stripped:
+                    result.append(stripped)
+        return result
+
+    def _get_disabled_signals(self) -> set[str]:
+        """Return the set of currently-disabled signal names (lowercased)."""
+        return set(self._cfg_list("disabled_signals", []))
 
     def _cfg_int(self, key: str, default: int, min_value: int | None = None) -> int:
         try:
@@ -190,7 +261,13 @@ class EmotionStateMachinePlugin(Star):
         scope = self._scope_id(event)
         user_id = str(event.get_sender_id())
         mentioned = bool(getattr(event, "is_at_or_wake_command", False))
-        view = self.machine.observe_text(scope, text, user_id=user_id, mentioned=mentioned)
+        # Filter the engine's inferred signals against the disabled list
+        # before applying, so disabled signals never enter the state.
+        disabled = self._get_disabled_signals()
+        view = self.machine.observe_text(
+            scope, text, user_id=user_id, mentioned=mentioned,
+            disabled_signals=disabled if disabled else None,
+        )
         logger.debug(
             "[emotion_state_machine] observed message | "
             f"scope={scope} user={user_id} group_label={view.group.label} combined_label={view.label}"
@@ -199,7 +276,12 @@ class EmotionStateMachinePlugin(Star):
 
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, request):
-        """Inject a compact emotion state block before LLM requests."""
+        """Inject a compact emotion state block before LLM requests.
+
+        Uses sentinel-wrapped blocks so re-injection replaces the prior
+        block in place instead of stacking duplicates. Safe to call
+        multiple times on the same request.
+        """
         if not self._cfg_bool("enabled", True):
             return
         if not self._cfg_bool("inject_enabled", True):
@@ -213,15 +295,58 @@ class EmotionStateMachinePlugin(Star):
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         block = build_prompt_block(scope, view)
-        request.system_prompt = (request.system_prompt or "").rstrip() + "\n\n" + block
+        request.system_prompt = _inject_emotion_block(
+            request.system_prompt or "", block
+        )
+
+    def _render_config_snapshot(self) -> str:
+        """Render a compact, human-readable snapshot of the effective
+        config — appended to /emotion_state output so admins can verify
+        the live values without opening the config file.
+
+        TTL seconds are also expressed in days for easier mental math.
+        """
+        decay_half_life = self._cfg_float("decay_half_life_seconds", 900.0, 1.0)
+        active_window = self._cfg_float("active_window_seconds", 300.0, 1.0)
+        relation_ttl = self._cfg_float("relation_ttl_seconds", 604800.0, 1.0)
+        group_ttl = self._cfg_float("group_ttl_seconds", 2592000.0, 1.0)
+        dilution = self._cfg_float("dilution_exponent", 0.5, 0.0)
+        save_interval = self._cfg_float("save_interval_seconds", 10.0, 0.0)
+        disabled = self.list_disabled_signals()
+
+        def _days(seconds: float) -> str:
+            return f"({seconds / 86400.0:.1f} days)"
+
+        lines = [
+            "⚙ Config snapshot",
+            f"- enabled: {self._cfg_bool('enabled', True)}",
+            f"- only_group: {self._cfg_bool('only_group', True)}",
+            f"- inject_enabled: {self._cfg_bool('inject_enabled', True)}",
+            f"- persist_state: {self._cfg_bool('persist_state', True)}",
+            f"- decay_half_life_seconds: {decay_half_life:.0f}s",
+            f"- active_window_seconds: {active_window:.0f}s",
+            f"- relation_ttl_seconds: {relation_ttl:.0f}s {_days(relation_ttl)}",
+            f"- group_ttl_seconds: {group_ttl:.0f}s {_days(group_ttl)}",
+            f"- dilution_exponent: {dilution:.2f}",
+            f"- save_interval_seconds: {save_interval:.1f}s",
+            f"- disabled_signals: [{', '.join(disabled)}]" if disabled
+            else "- disabled_signals: (none)",
+        ]
+        return "\n".join(lines)
 
     @filter.command("emotion_state")
     async def emotion_state(self, event: AstrMessageEvent):
-        """Show current emotion state for this conversation."""
+        """Show current emotion state for this conversation.
+
+        Output includes the current effective config snapshot at the
+        bottom so admins can verify live values without opening the
+        config file.
+        """
         scope = self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
-        event.set_result(event.plain_result(format_combined_view(view)))
+        text = format_combined_view(view) + "\n\n" + self._render_config_snapshot()
+        event.set_result(event.plain_result(text))
 
     @filter.command("emotion_signal")
     async def emotion_signal(self, event: AstrMessageEvent):
@@ -241,6 +366,14 @@ class EmotionStateMachinePlugin(Star):
             event.set_result(
                 event.plain_result(
                     f"未知 signal：{signal}\n可用 signal：{', '.join(signal_names())}"
+                )
+            )
+            return
+
+        if signal in self._get_disabled_signals():
+            event.set_result(
+                event.plain_result(
+                    f"signal {signal} 已被管理员禁用，无法手动施加。"
                 )
             )
             return
@@ -358,12 +491,18 @@ class EmotionStateMachinePlugin(Star):
         """Infer signals from raw text and apply them to the state.
 
         Prefer this over apply_signal() when the caller has raw user text
-        rather than a pre-classified signal name. Persists state.
+        rather than a pre-classified signal name. Signals listed in the
+        ``disabled_signals`` config are filtered out before application.
+        Persists state.
         """
         norm_scope = normalize_scope(scope)
         norm_user = normalize_user_id(user_id) if user_id else ""
+        disabled = self._get_disabled_signals()
         view = self.machine.observe_text(
-            norm_scope, text, user_id=norm_user or None, mentioned=mentioned
+            norm_scope, text,
+            user_id=norm_user or None,
+            mentioned=mentioned,
+            disabled_signals=disabled if disabled else None,
         )
         self._save_state()
         return view
@@ -398,18 +537,23 @@ class EmotionStateMachinePlugin(Star):
     ) -> CombinedEmotionView:
         """Manually apply a named signal to both group and relation layers.
 
-        `signal` must be one of `list_signals()`. Unknown names raise
-        ``ValueError``. ``intensity`` is validated: non-numeric input
-        raises ``TypeError``; NaN raises ``ValueError``; finite numbers
-        outside ``[0.0, 2.0]`` are clamped. Persists state.
-
-        For message-handling hot paths where you don't want an invalid
-        signal to break the bot's reply, prefer :meth:`try_apply_signal`.
+        `signal` must be one of :meth:`list_signals`. Unknown names raise
+        ``ValueError``; signals in the ``disabled_signals`` config also
+        raise ``ValueError`` (use :meth:`is_signal_enabled` to check
+        first, or call :meth:`try_apply_signal` for the safe variant).
+        ``intensity`` is validated: non-numeric input raises
+        ``TypeError``; NaN raises ``ValueError``; finite numbers outside
+        ``[0.0, 2.0]`` are clamped. Persists state.
         """
         available = signal_names()
         if signal not in available:
             raise ValueError(
                 f"Unknown signal: {signal!r}. Available: {', '.join(available)}"
+            )
+        if signal.lower() in self._get_disabled_signals():
+            raise ValueError(
+                f"Signal {signal!r} is disabled by configuration. "
+                "Remove it from the disabled_signals config to enable."
             )
         norm_intensity = self._validate_intensity(intensity)
         norm_scope = normalize_scope(scope)
@@ -520,6 +664,22 @@ class EmotionStateMachinePlugin(Star):
         """Names of signals the engine understands. Use this to validate
         signal arguments before calling apply_signal()."""
         return signal_names()
+
+    def is_signal_enabled(self, signal: str) -> bool:
+        """Check whether a signal is currently enabled (not in the
+        ``disabled_signals`` config). The check is case-insensitive.
+
+        Returns ``False`` for unknown signals as a defensive default —
+        callers should usually validate against :meth:`list_signals`
+        first.
+        """
+        if signal not in signal_names():
+            return False
+        return signal.lower() not in self._get_disabled_signals()
+
+    def list_disabled_signals(self) -> list[str]:
+        """The currently-disabled signal names (lowercased), as a list."""
+        return sorted(self._get_disabled_signals())
 
     async def terminate(self):
         self._save_state(force=True)

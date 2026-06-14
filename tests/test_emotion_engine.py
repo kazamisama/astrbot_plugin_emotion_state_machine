@@ -582,6 +582,113 @@ def test_prune_active_users_via_apply_interaction_uses_same_dict() -> None:
     assert id(machine.groups["g"].active_users) == initial_id
 
 
+# ----------------------------------------------------------------------
+# observe_text disabled_signals filtering
+# ----------------------------------------------------------------------
+
+
+def test_observe_text_filters_disabled_signals() -> None:
+    """Signals in the disabled set are dropped before application, so
+    the state engine only sees the survivors."""
+    machine = EmotionStateMachine(decay_half_life_seconds=900)
+    before = machine.get_group("g", apply_decay=False)
+
+    # "谢谢" would normally trigger "thanks" and "?" would trigger
+    # "question". Disable both — no signal should land.
+    machine.observe_text(
+        "g", "谢谢，这个能行吗？",
+        user_id="u", mentioned=True,
+        timestamp=1000.0,
+        disabled_signals={"thanks", "question"},
+    )
+
+    after = machine.get_group("g", apply_decay=False)
+    assert after.transitions == before.transitions
+    assert after.last_signal == before.last_signal
+
+
+def test_observe_text_disabled_set_is_optional() -> None:
+    """When disabled_signals is None or empty, all inferred signals apply."""
+    machine = EmotionStateMachine(decay_half_life_seconds=900)
+    machine.observe_text("g", "谢谢", user_id="u", timestamp=1000.0)
+    assert machine.get_group("g", apply_decay=False).transitions == 1
+
+
+def test_observe_text_disabled_set_filters_one_keeps_another() -> None:
+    """Selective filtering: disable one signal, another still fires."""
+    machine = EmotionStateMachine(decay_half_life_seconds=900)
+    # "谢谢" triggers "thanks" only (no "?" in this message).
+    machine.observe_text(
+        "g", "谢谢", user_id="u", timestamp=1000.0,
+        disabled_signals={"praise"},  # not relevant, shouldn't matter
+    )
+    # Disabled "praise" doesn't filter "thanks" → thanks still applies.
+    assert machine.get_group("g", apply_decay=False).last_signal == "thanks"
+
+
+# ----------------------------------------------------------------------
+# build_prompt_block sentinel markers
+# ----------------------------------------------------------------------
+
+
+def test_build_prompt_block_wraps_with_sentinels() -> None:
+    """The block must be wrapped with start/end markers so the plugin
+    can detect it for in-place replacement."""
+    from emotion_engine import (
+        ESM_BLOCK_END,
+        ESM_BLOCK_START,
+        build_prompt_block,
+    )
+    machine = EmotionStateMachine()
+    view = machine.get_combined("g-1", "u-1")
+    block = build_prompt_block("g-1", view)
+
+    assert block.startswith(ESM_BLOCK_START)
+    assert block.endswith(ESM_BLOCK_END)
+    assert "## Bot Emotion State" in block
+
+
+def test_sentinels_are_html_comment_style() -> None:
+    """Sentinels must be HTML comments so they pass through LLMs
+    untouched and don't render in any model output."""
+    from emotion_engine import ESM_BLOCK_END, ESM_BLOCK_START
+    assert ESM_BLOCK_START.startswith("<!--")
+    assert ESM_BLOCK_START.endswith("-->")
+    assert ESM_BLOCK_END.startswith("<!--")
+    assert ESM_BLOCK_END.endswith("-->")
+
+
+def test_two_distinct_blocks_have_different_content() -> None:
+    """Smoke check: each call to build_prompt_block reflects whatever
+    the engine state was at the time of the call. The two blocks built
+    in sequence must differ because the state advances between calls.
+
+    Note: CombinedEmotionView holds references to the mutable snapshots,
+    so we capture the *values* immediately after each apply instead of
+    keeping the view object across calls.
+    """
+    from emotion_engine import build_prompt_block
+    machine = EmotionStateMachine()
+    machine.apply_interaction(
+        "g", "u-a", EmotionEvent(signal="praise", intensity=1.0, timestamp=1000.0),
+    )
+    block_a = build_prompt_block(
+        "g", machine.get_combined("g", "u-a", apply_decay=False),
+    )
+    machine.apply_interaction(
+        "g", "u-a", EmotionEvent(signal="thanks", intensity=1.0, timestamp=1001.0),
+    )
+    block_b = build_prompt_block(
+        "g", machine.get_combined("g", "u-a", apply_decay=False),
+    )
+    # After the first apply, last_signal was "praise"; after the second
+    # it became "thanks". The blocks should reflect that ordering.
+    assert "praise" in block_a
+    assert "thanks" in block_b
+    assert "thanks" not in block_a
+    assert "praise" not in block_b
+
+
 def test_dilution_default_matches_sqrt_curve() -> None:
     """Default exponent 0.5 reproduces the historical 1/sqrt(n) curve."""
     machine = EmotionStateMachine()
