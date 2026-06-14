@@ -46,5 +46,23 @@
         "hint": "群公共情绪会按活跃人数做 1/sqrt(n) 稀释，避免单个用户强烈污染整个群状态",
         "type": "float",
         "default": 300.0
+    },
+    "relation_ttl_seconds": {
+        "description": "【关系层】用户关系快照的最大保留时间（秒）",
+        "hint": "超过此时间未活跃的用户关系会被自动清理，避免内存无限增长；604800 表示 7 天",
+        "type": "float",
+        "default": 604800.0
+    },
+    "group_ttl_seconds": {
+        "description": "【群聊层】群公共情绪快照的最大保留时间（秒）",
+        "hint": "超过此时间未活跃的群组情绪会被自动清理，避免 JSON 状态文件无限膨胀；2592000 表示 30 天",
+        "type": "float",
+        "default": 2592000.0
+    },
+    "dilution_exponent": {
+        "description": "【群聊稀释】活跃人数稀释曲线的指数",
+        "hint": "公式 1/n^exponent，0.5=sqrt 温和（默认），0.0=不稀释，1.0=线性衰减；范围 0.0–2.0",
+        "type": "float",
+        "default": 0.5
     }
 }

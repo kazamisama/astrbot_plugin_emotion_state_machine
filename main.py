@@ -56,11 +56,24 @@ class EmotionStateMachinePlugin(Star):
         self.machine = EmotionStateMachine(
             decay_half_life_seconds=self._cfg_float("decay_half_life_seconds", 900.0, 1.0),
             active_window_seconds=self._cfg_float("active_window_seconds", 300.0, 1.0),
+            relation_ttl_seconds=self._cfg_float("relation_ttl_seconds", 604800.0, 1.0),
+            group_ttl_seconds=self._cfg_float("group_ttl_seconds", 2592000.0, 1.0),
+            dilution_exponent=self._cfg_float("dilution_exponent", 0.5, 0.0),
         )
         self._last_save_time = 0.0
         self._load_state()
 
     def _cfg_bool(self, key: str, default: bool) -> bool:
+        """Coerce a config value to bool, tolerating common string forms.
+
+        The Chinese matches (``"开启" / "是" / "启用"`` and their
+        negations) are intentionally retained even though AstrBot's web
+        admin UI stores canonical ``"true" / "false"`` strings and will
+        never produce them. They exist to support users who edit
+        ``config.json`` by hand and prefer Chinese tokens, which is
+        common in this plugin's user base. Removing them would silently
+        break those hand-edited configs.
+        """
         value = self.config.get(key, default)
         if isinstance(value, bool):
             return value
@@ -124,6 +137,16 @@ class EmotionStateMachinePlugin(Star):
                 decay_half_life_seconds=self._cfg_float("decay_half_life_seconds", 900.0, 1.0),
             )
             self.machine.active_window_seconds = self._cfg_float("active_window_seconds", 300.0, 1.0)
+            self.machine.relation_ttl_seconds = self._cfg_float("relation_ttl_seconds", 604800.0, 1.0)
+            self.machine.group_ttl_seconds = self._cfg_float("group_ttl_seconds", 2592000.0, 1.0)
+            self.machine.dilution_exponent = self._cfg_float("dilution_exponent", 0.5, 0.0)
+            # Drop cold scopes that survived in the JSON file from a
+            # previous run — bounds startup memory for long-running bots.
+            pruned = self.machine._prune_groups()
+            if pruned:
+                logger.info(
+                    f"[emotion_state_machine] pruned {pruned} cold scope(s) on load"
+                )
             logger.info(f"[emotion_state_machine] loaded state from {self.state_path}")
         except Exception as exc:
             logger.warning(f"[emotion_state_machine] failed to load state: {exc}")
@@ -135,6 +158,9 @@ class EmotionStateMachinePlugin(Star):
         interval = self._cfg_float("save_interval_seconds", 10.0, 0.0)
         if not force and now - self._last_save_time < interval:
             return
+        # Prune cold scopes before writing so the JSON file shrinks over
+        # time instead of growing with dead group/relation entries.
+        self.machine._prune_groups()
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
@@ -342,6 +368,25 @@ class EmotionStateMachinePlugin(Star):
         self._save_state()
         return view
 
+    def _validate_intensity(self, intensity: float) -> float:
+        """Coerce ``intensity`` to a finite float in ``[0.0, 2.0]``.
+
+        Raises ``TypeError`` for non-numeric input and ``ValueError`` for
+        NaN. Out-of-range finite numbers are silently clamped — this
+        matches the historical behavior of ``EmotionStateMachine.apply_interaction``
+        and avoids masking the caller's intent with an exception.
+        """
+        try:
+            value = float(intensity)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                f"intensity must be a number, got {intensity!r}"
+            ) from exc
+        # NaN is the only float that does not equal itself.
+        if value != value:
+            raise ValueError("intensity must be a finite number, got NaN")
+        return max(0.0, min(2.0, value))
+
     def apply_signal(
         self,
         scope: str,
@@ -354,22 +399,58 @@ class EmotionStateMachinePlugin(Star):
         """Manually apply a named signal to both group and relation layers.
 
         `signal` must be one of `list_signals()`. Unknown names raise
-        ValueError. Persists state.
+        ``ValueError``. ``intensity`` is validated: non-numeric input
+        raises ``TypeError``; NaN raises ``ValueError``; finite numbers
+        outside ``[0.0, 2.0]`` are clamped. Persists state.
+
+        For message-handling hot paths where you don't want an invalid
+        signal to break the bot's reply, prefer :meth:`try_apply_signal`.
         """
         available = signal_names()
         if signal not in available:
             raise ValueError(
                 f"Unknown signal: {signal!r}. Available: {', '.join(available)}"
             )
+        norm_intensity = self._validate_intensity(intensity)
         norm_scope = normalize_scope(scope)
         norm_user = normalize_user_id(user_id)
         view = self.machine.apply_interaction(
             norm_scope,
             norm_user,
-            EmotionEvent(signal=signal, intensity=intensity, reason=reason),
+            EmotionEvent(signal=signal, intensity=norm_intensity, reason=reason),
         )
         self._save_state()
         return view
+
+    def try_apply_signal(
+        self,
+        scope: str,
+        user_id: str,
+        signal: str,
+        *,
+        intensity: float = 1.0,
+        reason: str = "external",
+    ) -> CombinedEmotionView | None:
+        """Safe variant of :meth:`apply_signal` for hot paths.
+
+        Returns ``None`` on ``ValueError`` / ``TypeError`` (unknown signal,
+        non-numeric or NaN intensity) instead of letting the exception
+        propagate. The bot reply will not be broken by an invalid
+        external call. A warning is logged at WARNING level.
+
+        State is **not** persisted when the call fails. State is persisted
+        exactly once on success, same as :meth:`apply_signal`.
+        """
+        try:
+            return self.apply_signal(
+                scope, user_id, signal, intensity=intensity, reason=reason
+            )
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                f"[emotion_state_machine] try_apply_signal ignored: {exc} "
+                f"(scope={scope!r}, user_id={user_id!r}, signal={signal!r})"
+            )
+            return None
 
     def reset_scope(self, scope: str) -> GroupEmotionSnapshot:
         """Reset a scope entirely: clears the group snapshot AND all
@@ -379,6 +460,25 @@ class EmotionStateMachinePlugin(Star):
         snap = self.machine.reset(normalize_scope(scope))
         self._save_state(force=True)
         return snap
+
+    def prune_cold_state(self) -> dict[str, int]:
+        """Prune cold groups and relations across all scopes.
+
+        Returns ``{"groups_pruned": int, "relations_pruned": int}``.
+        Persists state only when at least one entry was actually pruned
+        (avoids needless disk I/O for a no-op maintenance call). Pair
+        this with a scheduled task (e.g. once per day) to bound the
+        on-disk state file size for long-running bots.
+        """
+        result = self.machine.prune_cold_state()
+        if result["groups_pruned"] > 0 or result["relations_pruned"] > 0:
+            self._save_state(force=True)
+            logger.info(
+                f"[emotion_state_machine] prune_cold_state: "
+                f"groups={result['groups_pruned']}, "
+                f"relations={result['relations_pruned']}"
+            )
+        return result
 
     def force_decay(
         self,

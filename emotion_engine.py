@@ -95,6 +95,54 @@ KEYWORD_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
+# Interrogative words / modal question phrases. Presence of any of these
+# in a message is treated as a strong question signal — even without a
+# trailing "?". This covers "行不行" / "能不能" / "怎么修" / "什么是 X"
+# style questions that don't end with a question mark.
+QUESTION_INDICATORS: tuple[str, ...] = (
+    # Standard question words
+    "怎么", "什么", "为什么", "为啥", "哪", "谁", "几", "多少", "如何", "干嘛",
+    # Modal / yes-no question phrases
+    "是不是", "能不能", "会不会", "可不可以", "要不要", "好不好", "行不行",
+    "对不对", "有没有",
+)
+
+
+# Group emotion label thresholds.
+#
+# Tuning these changes the bot's apparent personality: lower thresholds
+# make labels fire more readily (more reactive), higher thresholds make
+# the bot appear more stoic. The order in this dict is meaningful —
+# ``derive_group_label`` evaluates conditions in insertion order and
+# returns the first match. ``"calm"`` is the implicit default when no
+# condition matches and is intentionally absent from the table.
+#
+# Convention: ``<dim>_min`` means the snapshot value must be **>=** the
+# threshold; ``<dim>_max`` means it must be **<=** the threshold.
+GROUP_LABEL_THRESHOLDS: dict[str, dict[str, float]] = {
+    "annoyed":  {"stress_min": 0.68, "valence_max": 0.42},
+    "hurt":     {"valence_max": 0.34, "stress_min": 0.42},
+    "tense":    {"stress_min": 0.62, "arousal_min": 0.55},
+    "excited":  {"valence_min": 0.72, "arousal_min": 0.62},
+    "happy":    {"valence_min": 0.66, "stress_max": 0.34},
+    "curious":  {"curiosity_min": 0.66, "stress_max": 0.55},
+    "quiet":    {"arousal_max": 0.22, "stress_max": 0.28},
+}
+
+
+# Per-user relation label thresholds. Same tuning contract as
+# ``GROUP_LABEL_THRESHOLDS``: lower → more reactive labels, higher →
+# more stoic. Insertion order = evaluation order. ``"neutral"`` is the
+# default fallback and is absent from the table.
+RELATION_LABEL_THRESHOLDS: dict[str, dict[str, float]] = {
+    "guarded":     {"irritation_min": 0.68, "trust_max": 0.42},
+    "attached":    {"affection_min": 0.66, "trust_min": 0.62, "irritation_max": 0.35},
+    "trusted":     {"trust_min": 0.66, "irritation_max": 0.32},
+    "irritated":   {"irritation_min": 0.55},
+    "unfamiliar":  {"familiarity_max": 0.18},
+}
+
+
 @dataclass(frozen=True)
 class EmotionEvent:
     """Input event consumed by the state machine."""
@@ -203,9 +251,20 @@ EmotionSnapshot = GroupEmotionSnapshot
 class EmotionStateMachine:
     """Manages group emotion and per-user relation snapshots."""
 
-    def __init__(self, *, decay_half_life_seconds: float = 900.0, active_window_seconds: float = 300.0):
+    def __init__(
+        self,
+        *,
+        decay_half_life_seconds: float = 900.0,
+        active_window_seconds: float = 300.0,
+        relation_ttl_seconds: float = 604800.0,
+        group_ttl_seconds: float = 2592000.0,
+        dilution_exponent: float = 0.5,
+    ):
         self.decay_half_life_seconds = max(1.0, float(decay_half_life_seconds))
         self.active_window_seconds = max(1.0, float(active_window_seconds))
+        self.relation_ttl_seconds = max(1.0, float(relation_ttl_seconds))
+        self.group_ttl_seconds = max(1.0, float(group_ttl_seconds))
+        self.dilution_exponent = max(0.0, min(2.0, float(dilution_exponent)))
         self.groups: dict[str, GroupEmotionSnapshot] = {}
         self.relations: dict[str, dict[str, UserRelationSnapshot]] = {}
 
@@ -237,6 +296,9 @@ class EmotionStateMachine:
     ) -> UserRelationSnapshot:
         scope = normalize_scope(scope)
         user_id = normalize_user_id(user_id)
+        if apply_decay:
+            # Lazily prune stale relations to bound memory growth.
+            self._prune_relations(scope, now=now)
         bucket = self.relations.setdefault(scope, {})
         snapshot = bucket.get(user_id)
         if snapshot is None:
@@ -254,6 +316,10 @@ class EmotionStateMachine:
         now: float | None = None,
         apply_decay: bool = True,
     ) -> CombinedEmotionView:
+        if apply_decay:
+            # Prune stale relations up-front so combined reads honor TTL
+            # even when the caller passes an empty user_id.
+            self._prune_relations(scope, now=now)
         group = self.get_group(scope, now=now, apply_decay=apply_decay)
         relation = None
         normalized_user = normalize_user_id(user_id) if user_id else ""
@@ -285,7 +351,7 @@ class EmotionStateMachine:
         for key, baseline in GROUP_BASELINE.items():
             value = getattr(snapshot, key)
             setattr(snapshot, key, clamp(baseline + (value - baseline) * retention))
-        snapshot.active_users = prune_active_users(snapshot.active_users, current, self.active_window_seconds)
+        prune_active_users(snapshot.active_users, current, self.active_window_seconds)
         snapshot.updated_at = current
         snapshot.label = derive_group_label(snapshot)
         return snapshot
@@ -307,6 +373,101 @@ class EmotionStateMachine:
         snapshot.label = derive_relation_label(snapshot)
         return snapshot
 
+    def _active_user_dilution(self, active_count: int) -> float:
+        """Compute the per-signal dilution factor for a group of ``n`` active
+        users. Returns ``1 / n ** dilution_exponent``.
+
+        Default exponent ``0.5`` (sqrt curve) gives a gentle decay that
+        still lets a single user's signal register in a busy room. Lower
+        exponents (``0.0``–``0.3``) make the bot more reactive in crowds;
+        higher exponents (``0.7``–``1.0``) make the bot more stoic in
+        crowds. ``0.0`` disables dilution entirely.
+        """
+        n = max(1, int(active_count))
+        exponent = self.dilution_exponent
+        if exponent <= 0.0:
+            return 1.0
+        return 1.0 / (n ** exponent)
+
+    def _prune_relations(self, scope: str, *, now: float | None = None) -> None:
+        """Remove user relations whose snapshot is older than
+        ``relation_ttl_seconds``.
+
+        Runs lazily during ``get_relation`` / ``get_combined`` to bound the
+        memory footprint of long-running bots in active groups. Stale
+        entries are dropped entirely (not reset to baseline), so a returning
+        user starts fresh — which is the intended semantic of a TTL.
+        """
+        bucket = self.relations.get(scope)
+        if not bucket:
+            return
+        current = time.time() if now is None else float(now)
+        cutoff = current - self.relation_ttl_seconds
+        stale = [uid for uid, snap in bucket.items() if float(snap.updated_at) < cutoff]
+        for uid in stale:
+            bucket.pop(uid, None)
+        if not bucket:
+            self.relations.pop(scope, None)
+
+    def _prune_groups(self, *, now: float | None = None) -> int:
+        """Remove group snapshots whose ``updated_at`` is older than
+        ``group_ttl_seconds``.
+
+        Returns the number of groups pruned. Called at load time and
+        before each save, so cold scopes don't accumulate in the JSON
+        file. Stale groups are dropped entirely — a returning scope
+        starts at baseline on the next message, same TTL semantic as
+        :meth:`_prune_relations`.
+        """
+        if not self.groups:
+            return 0
+        current = time.time() if now is None else float(now)
+        cutoff = current - self.group_ttl_seconds
+        stale = [scope for scope, snap in self.groups.items()
+                 if float(snap.updated_at) < cutoff]
+        for scope in stale:
+            self.groups.pop(scope, None)
+            # Also drop the corresponding relations bucket — it would
+            # be unreachable from the public API anyway.
+            self.relations.pop(scope, None)
+        return len(stale)
+
+    def prune_cold_state(self, *, now: float | None = None) -> dict[str, int]:
+        """Prune both cold groups and cold relations across all scopes.
+
+        Public maintenance entry point. Returns a count dict:
+        ``{"groups_pruned": int, "relations_pruned": int}``. Counts are
+        reported as deltas (before - after), so they include relations
+        that became unreachable when their parent group was pruned.
+        Use this from a scheduled task (e.g. once per day) or to bound
+        state size before reading.
+        """
+        # Count current entries so we can report accurate deltas.
+        before_groups = len(self.groups)
+        before_relations = sum(len(bucket) for bucket in self.relations.values())
+
+        # 1. Prune cold groups (also drops unreachable relations).
+        self._prune_groups(now=now)
+
+        # 2. Walk remaining scopes and prune stale relations.
+        current = time.time() if now is None else float(now)
+        cutoff = current - self.relation_ttl_seconds
+        for scope in list(self.relations.keys()):
+            bucket = self.relations[scope]
+            stale = [uid for uid, snap in bucket.items()
+                     if float(snap.updated_at) < cutoff]
+            for uid in stale:
+                bucket.pop(uid, None)
+            if not bucket:
+                self.relations.pop(scope, None)
+
+        after_groups = len(self.groups)
+        after_relations = sum(len(bucket) for bucket in self.relations.values())
+        return {
+            "groups_pruned": before_groups - after_groups,
+            "relations_pruned": before_relations - after_relations,
+        }
+
     def decay(self, scope: str, *, now: float | None = None) -> GroupEmotionSnapshot:
         return self.decay_group(scope, now=now)
 
@@ -322,11 +483,11 @@ class EmotionStateMachine:
         if normalized_user:
             relation = self.get_relation(scope, normalized_user, now=event.timestamp, apply_decay=True)
             group.active_users[normalized_user] = float(event.timestamp)
-            group.active_users = prune_active_users(group.active_users, event.timestamp, self.active_window_seconds)
+            prune_active_users(group.active_users, event.timestamp, self.active_window_seconds)
 
         group_weight, relation_weight = SIGNAL_LAYER_WEIGHTS.get(event.signal, (0.5, 0.5))
         intensity = clamp(event.intensity, 0.0, 2.0)
-        group_multiplier = group_weight * active_user_dilution(len(group.active_users) or 1)
+        group_multiplier = group_weight * self._active_user_dilution(len(group.active_users) or 1)
         relation_multiplier = relation_weight
 
         apply_weights(group, GROUP_SIGNAL_WEIGHTS.get(event.signal, {}), intensity * group_multiplier)
@@ -375,6 +536,9 @@ class EmotionStateMachine:
             "version": 2,
             "decay_half_life_seconds": self.decay_half_life_seconds,
             "active_window_seconds": self.active_window_seconds,
+            "relation_ttl_seconds": self.relation_ttl_seconds,
+            "group_ttl_seconds": self.group_ttl_seconds,
+            "dilution_exponent": self.dilution_exponent,
             "groups": {scope: snapshot.to_dict() for scope, snapshot in self.groups.items()},
             "relations": {
                 scope: {user_id: snapshot.to_dict() for user_id, snapshot in bucket.items()}
@@ -391,6 +555,9 @@ class EmotionStateMachine:
                 else float(data.get("decay_half_life_seconds", 900.0) or 900.0)
             ),
             active_window_seconds=float(data.get("active_window_seconds", 300.0) or 300.0),
+            relation_ttl_seconds=float(data.get("relation_ttl_seconds", 604800.0) or 604800.0),
+            group_ttl_seconds=float(data.get("group_ttl_seconds", 2592000.0) or 2592000.0),
+            dilution_exponent=float(data.get("dilution_exponent", 0.5) or 0.5),
         )
 
         raw_groups = data.get("groups", data.get("states", {}))
@@ -411,6 +578,12 @@ class EmotionStateMachine:
                         machine.relations[normalized_scope][normalize_user_id(str(user_id))] = (
                             UserRelationSnapshot.from_dict(raw)
                         )
+
+        # NOTE: cold-scope pruning is intentionally NOT done here.
+        # ``from_dict`` is a pure data loader — tests use synthetic
+        # timestamps in the past and rely on the round-trip preserving
+        # their fixtures. Production callers (the plugin's ``_load_state``)
+        # invoke ``_prune_groups()`` explicitly after load.
         return machine
 
 
@@ -426,13 +599,48 @@ def normalize_user_id(user_id: str | None) -> str:
     return str(user_id or "").strip()
 
 
+def _ends_with_question_mark(text: str) -> bool:
+    """True if the message ends with ``?`` or ``？`` (after stripping
+    trailing whitespace). Bare ``?`` in the middle of a sentence does
+    not count — see :func:`infer_signals` for the rationale.
+    """
+    stripped = text.rstrip()
+    return bool(stripped) and stripped[-1] in ("?", "？")
+
+
+def _contains_interrogative(text: str) -> bool:
+    """True if the message contains a Chinese question word, modal
+    question phrase, or the ``吗`` particle near the end.
+    """
+    if any(indicator in text for indicator in QUESTION_INDICATORS):
+        return True
+    # "吗" is a suffix; only treat it as a question marker if it sits
+    # right before the end of a sentence (followed by optional terminal
+    # punctuation). This avoids matching substrings like "马马虎虎".
+    stripped = text.rstrip(" \t\n\r.!?。！？,，;；:：")
+    return stripped.endswith("吗")
+
+
 def infer_signals(text: str, *, mentioned: bool = False) -> list[tuple[str, str]]:
+    """Infer emotion signals from a plain message.
+
+    The ``question`` signal is fired only when:
+
+    1. The message ends with ``?`` / ``？`` (most common case), **or**
+    2. The message contains a Chinese interrogative word, modal question
+       phrase, or the ``吗`` particle near the end.
+
+    Bare ``?`` in the middle of a sentence (e.g. "OK? 然后...") is
+    intentionally not enough — too noisy for casual group conversation
+    where users sprinkle question marks into statements and rhetorical
+    tags.
+    """
     lowered = (text or "").lower()
     signals: list[tuple[str, str]] = []
     if mentioned:
         signals.append(("mention", "bot mentioned"))
-    if "?" in lowered or "？" in lowered:
-        signals.append(("question", "question mark"))
+    if _ends_with_question_mark(lowered) or _contains_interrogative(lowered):
+        signals.append(("question", "question mark or interrogative"))
     for signal, keywords in KEYWORD_SIGNALS:
         if any(keyword.lower() in lowered for keyword in keywords):
             signals.append((signal, f"keyword:{signal}"))
@@ -451,12 +659,40 @@ def dedupe_signals(signals: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def prune_active_users(active_users: dict[str, float], now: float, window_seconds: float) -> dict[str, float]:
+    """Drop entries older than ``now - window_seconds`` in place.
+
+    Mutates ``active_users`` and returns the same object for backward
+    compatibility with prior call sites. The previous implementation
+    rebuilt a fresh dict on every invocation, which put allocation
+    pressure on hot message paths in busy groups (one O(n) dict
+    allocation per message). In-place deletion skips the copy entirely
+    and only deletes the actual stale entries.
+
+    The function tolerates non-dict input by returning it unchanged —
+    this keeps the helper safe to call defensively.
+    """
+    if not active_users:
+        return active_users
     cutoff = float(now) - float(window_seconds)
-    return {str(user): float(ts) for user, ts in active_users.items() if float(ts) >= cutoff}
+    stale = [user for user, ts in active_users.items() if float(ts) < cutoff]
+    for user in stale:
+        active_users.pop(user, None)
+    return active_users
 
 
-def active_user_dilution(active_count: int) -> float:
+def _legacy_module_dilution(active_count: int) -> float:
+    """Kept for backward-compatibility with any external callers that still
+    import ``active_user_dilution`` from this module. Delegates to the
+    ``EmotionStateMachine`` default (sqrt curve) when called as a free
+    function.
+    """
     return 1.0 / math.sqrt(max(1, int(active_count)))
+
+
+# Backward-compatible alias. New callers should use
+# ``EmotionStateMachine._active_user_dilution`` to honor the configured
+# ``dilution_exponent``.
+active_user_dilution = _legacy_module_dilution
 
 
 def apply_weights(target: Any, weights: dict[str, float], multiplier: float) -> None:
@@ -465,37 +701,55 @@ def apply_weights(target: Any, weights: dict[str, float], multiplier: float) -> 
         setattr(target, key, clamp(current + delta * multiplier))
 
 
+def _eval_label_condition(
+    snapshot: Any,
+    thresholds: dict[str, float],
+) -> bool:
+    """Return True if ``snapshot`` satisfies every entry in ``thresholds``.
+
+    Convention: keys ending in ``_min`` test ``value >= threshold``;
+    keys ending in ``_max`` test ``value <= threshold``. Any other key
+    is treated as a direct ``value == threshold`` equality (used for
+    exact-match labels). Unknown dimension names raise ``AttributeError``
+    so misconfiguration fails loudly rather than silently mismatching.
+    """
+    for key, threshold in thresholds.items():
+        value = getattr(snapshot, key.rsplit("_", 1)[0])
+        if key.endswith("_min"):
+            if not (value >= threshold):
+                return False
+        elif key.endswith("_max"):
+            if not (value <= threshold):
+                return False
+        else:
+            if value != threshold:
+                return False
+    return True
+
+
 def derive_group_label(snapshot: GroupEmotionSnapshot) -> str:
-    """Map shared group dimensions to one stable atmosphere label."""
-    if snapshot.stress >= 0.68 and snapshot.valence <= 0.42:
-        return "annoyed"
-    if snapshot.valence <= 0.34 and snapshot.stress >= 0.42:
-        return "hurt"
-    if snapshot.stress >= 0.62 and snapshot.arousal >= 0.55:
-        return "tense"
-    if snapshot.valence >= 0.72 and snapshot.arousal >= 0.62:
-        return "excited"
-    if snapshot.valence >= 0.66 and snapshot.stress <= 0.34:
-        return "happy"
-    if snapshot.curiosity >= 0.66 and snapshot.stress <= 0.55:
-        return "curious"
-    if snapshot.arousal <= 0.22 and snapshot.stress <= 0.28:
-        return "quiet"
+    """Map shared group dimensions to one stable atmosphere label.
+
+    Evaluation follows ``GROUP_LABEL_THRESHOLDS`` insertion order; the
+    first matching label wins. ``"calm"`` is returned when no label
+    matches. To tune the bot's apparent reactivity, edit the threshold
+    dict — not the function body.
+    """
+    for label, thresholds in GROUP_LABEL_THRESHOLDS.items():
+        if _eval_label_condition(snapshot, thresholds):
+            return label
     return "calm"
 
 
 def derive_relation_label(snapshot: UserRelationSnapshot) -> str:
-    """Map private relation dimensions to one relation label."""
-    if snapshot.irritation >= 0.68 and snapshot.trust <= 0.42:
-        return "guarded"
-    if snapshot.affection >= 0.66 and snapshot.trust >= 0.62 and snapshot.irritation <= 0.35:
-        return "attached"
-    if snapshot.trust >= 0.66 and snapshot.irritation <= 0.32:
-        return "trusted"
-    if snapshot.irritation >= 0.55:
-        return "irritated"
-    if snapshot.familiarity <= 0.18:
-        return "unfamiliar"
+    """Map private relation dimensions to one relation label.
+
+    Evaluation follows ``RELATION_LABEL_THRESHOLDS`` insertion order; the
+    first matching label wins. ``"neutral"`` is the default fallback.
+    """
+    for label, thresholds in RELATION_LABEL_THRESHOLDS.items():
+        if _eval_label_condition(snapshot, thresholds):
+            return label
     return "neutral"
 
 

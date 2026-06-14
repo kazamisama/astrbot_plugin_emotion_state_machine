@@ -36,6 +36,9 @@ class _FakeConfig:
             "save_interval_seconds": 10.0,
             "decay_half_life_seconds": 900.0,
             "active_window_seconds": 300.0,
+            "relation_ttl_seconds": 604800.0,
+            "group_ttl_seconds": 2592000.0,
+            "dilution_exponent": 0.5,
         }
         self._values.update(overrides)
 
@@ -57,6 +60,9 @@ def _make_plugin(**config_overrides: Any) -> EmotionStateMachinePlugin:
     plugin.machine = EmotionStateMachine(
         decay_half_life_seconds=plugin.config.get("decay_half_life_seconds", 900.0),
         active_window_seconds=plugin.config.get("active_window_seconds", 300.0),
+        relation_ttl_seconds=plugin.config.get("relation_ttl_seconds", 604800.0),
+        group_ttl_seconds=plugin.config.get("group_ttl_seconds", 2592000.0),
+        dilution_exponent=plugin.config.get("dilution_exponent", 0.5),
     )
     plugin._last_save_time = 0.0
     return plugin
@@ -238,3 +244,109 @@ def test_get_combined_state_normalizes_inputs() -> None:
     view_a = plugin.get_combined_state("  Group-1  ", "  User-A  ")
     view_b = plugin.get_combined_state("group-1", "user-a")
     assert view_a.group.label == view_b.group.label
+
+
+# ----------------------------------------------------------------------
+# try_apply_signal — safe variant for hot paths
+# ----------------------------------------------------------------------
+
+
+def test_try_apply_signal_returns_view_for_known_signal() -> None:
+    plugin = _make_plugin()
+    view = plugin.try_apply_signal("g", "u", "praise", intensity=1.0)
+    assert view is not None
+    assert view.group.last_signal == "praise"
+    assert view.relation is not None
+    assert view.relation.last_signal == "praise"
+
+
+def test_try_apply_signal_returns_none_for_unknown_signal() -> None:
+    """Hot-path variant must NOT raise on invalid input."""
+    plugin = _make_plugin()
+    result = plugin.try_apply_signal("g", "u", "not_a_real_signal")
+    assert result is None
+
+
+def test_try_apply_signal_returns_none_for_nan_intensity() -> None:
+    plugin = _make_plugin()
+    result = plugin.try_apply_signal("g", "u", "praise", intensity=float("nan"))
+    assert result is None
+
+
+def test_try_apply_signal_returns_none_for_non_numeric_intensity() -> None:
+    plugin = _make_plugin()
+    result = plugin.try_apply_signal("g", "u", "praise", intensity="not a number")  # type: ignore[arg-type]
+    assert result is None
+
+
+def test_try_apply_signal_does_not_mutate_state_on_failure() -> None:
+    """When the safe variant returns None, no signal should be applied
+    to the engine — state should be unchanged."""
+    plugin = _make_plugin()
+    before = plugin.get_group_state("g")
+    assert plugin.try_apply_signal("g", "u", "not_a_real_signal") is None
+    after = plugin.get_group_state("g", apply_decay=False)
+    assert after.transitions == before.transitions
+    assert after.last_signal == before.last_signal
+
+
+# ----------------------------------------------------------------------
+# intensity validation in apply_signal
+# ----------------------------------------------------------------------
+
+
+def test_apply_signal_clamps_out_of_range_intensity() -> None:
+    """Finite out-of-range values are silently clamped, matching the
+    historical behavior of EmotionStateMachine.apply_interaction."""
+    plugin = _make_plugin()
+    # intensity > 2.0 should clamp to 2.0 — no exception.
+    view = plugin.apply_signal("g", "u", "praise", intensity=10.0)
+    assert view is not None
+    view_low = plugin.apply_signal("g", "u", "praise", intensity=-1.0)
+    assert view_low is not None
+
+
+def test_apply_signal_rejects_nan_intensity() -> None:
+    plugin = _make_plugin()
+    with pytest.raises(ValueError, match="finite"):
+        plugin.apply_signal("g", "u", "praise", intensity=float("nan"))
+
+
+def test_apply_signal_rejects_non_numeric_intensity() -> None:
+    plugin = _make_plugin()
+    with pytest.raises(TypeError, match="number"):
+        plugin.apply_signal("g", "u", "praise", intensity=None)  # type: ignore[arg-type]
+
+
+def test_apply_signal_unchanged_contract_for_valid_input() -> None:
+    """The original happy path must keep working after the validation
+    refactor — praise with intensity=1.0 still moves valence up."""
+    plugin = _make_plugin()
+    view = plugin.apply_signal("g", "u", "praise", intensity=1.0)
+    assert view.group.last_signal == "praise"
+    assert view.group.valence > 0.56
+
+
+# ----------------------------------------------------------------------
+# prune_cold_state — plugin-level maintenance entry point
+# ----------------------------------------------------------------------
+
+
+def test_prune_cold_state_returns_count_dict() -> None:
+    plugin = _make_plugin()
+    # Touch a scope so it's not empty.
+    plugin.apply_signal("g", "u", "praise", intensity=1.0)
+    result = plugin.prune_cold_state()
+    assert isinstance(result, dict)
+    assert "groups_pruned" in result
+    assert "relations_pruned" in result
+    # Nothing is cold yet → no pruning.
+    assert result["groups_pruned"] == 0
+    assert result["relations_pruned"] == 0
+
+
+def test_prune_cold_state_includes_group_ttl_config() -> None:
+    """The plugin must wire up the group_ttl_seconds config from schema."""
+    plugin = _make_plugin()
+    # Default value (2592000 = 30 days) should be applied.
+    assert plugin.machine.group_ttl_seconds == 2592000.0
