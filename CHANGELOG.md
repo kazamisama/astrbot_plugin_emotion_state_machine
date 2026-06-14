@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+> 下一个版本的待发布变更。
+
+## v0.3.0 - 2026-06-14
+
+### Added
+
+- **配置项**：
+  - `relation_ttl_seconds`（默认 7 天）—— 用户关系快照的最大保留时间；过期后自动从内存和 JSON 状态文件里清除。
+  - `dilution_exponent`（默认 0.5，范围 0.0–2.0）—— 群聊活跃人数稀释曲线的指数。0.0=不稀释，0.5=sqrt（温和），1.0=线性（激进）。
+  - `group_ttl_seconds`（默认 30 天）—— 群公共情绪快照的最大保留时间。
+  - `disabled_signals`（默认 `[]`）—— 禁用的 signal 名列表。`infer_signals` 推断后过滤；`apply_signal` / `try_apply_signal` 拒绝；`/emotion_signal` 命令拒绝。
+- **公开方法**：
+  - `try_apply_signal(scope, user_id, signal, *, intensity, reason)` —— `apply_signal` 的安全变体，失败（未知 signal / 禁用 / intensity 非法）时返回 `None` 并记 WARNING，适合热路径调用。
+  - `prune_cold_state()` —— 一次性清掉所有冷 scope + 冷 relations，返回 `{"groups_pruned": int, "relations_pruned": int}`，有剪才落盘。
+  - `is_signal_enabled(signal)` —— 检查 signal 是否被 `disabled_signals` 禁用（大小写不敏感）。
+  - `list_disabled_signals()` —— 返回当前禁用的 signal 名列表（已排序）。
+- **模块常量导出**（`emotion_engine`）：`QUESTION_INDICATORS`、`GROUP_LABEL_THRESHOLDS`、`RELATION_LABEL_THRESHOLDS`、`ESM_BLOCK_START`、`ESM_BLOCK_END`。
+- **`/emotion_state` 命令尾部**新增 `⚙ Config snapshot` 块：显示当前生效配置（含 TTL 秒数 + 天数换算、disabled_signals 列表等），方便管理员排查。
+- **`build_prompt_block` 哨兵包裹**：输出用 `<!-- esm:emotion-block:start -->` / `<!-- esm:emotion-block:end -->` HTML 注释包起来，LLM 不可见但代码可定位；`_inject_emotion_block` 负责去重 / 追加 / 尾换行归一化。
+- **私有 helper**：`_eval_label_condition`（label 阈值统一判定）、`_active_user_dilution`（可配置稀释曲线）、`_prune_groups`（冷 scope 剪枝）、`_prune_relations`（冷 relation 剪枝）、`_render_config_snapshot`（`/emotion_state` 配置快照）、`_ends_with_question_mark` / `_contains_interrogative`（疑问句判定）。
+- **测试**：从 27 → 101+（破百），全绿。
+
+### Changed
+
+- **`infer_signals` 疑问句判定收紧**：不再对句中裸 `?` 触发 `question` 信号；只在末尾 `?` / `？` 或包含中文疑问词 / 语气短语 / 句末 `吗` 时触发。
+- **`prune_active_users` 原地变更**：不再 `return {**}` 重建 dict；空 dict 走 fast path；调用方持有的 dict 对象身份不变。
+- **`derive_group_label` / `derive_relation_label` 阈值外置**：魔数 0.68 / 0.42 / 0.55 / 0.66 等抽到模块级 `GROUP_LABEL_THRESHOLDS` / `RELATION_LABEL_THRESHOLDS` dict，命名约定 `<dim>_min` / `<dim>_max`。
+- **`from_dict` 不再自动调 `_prune_groups`**：保持纯数据加载语义；生产调用方（插件 `_load_state`）显式触发。
+- **`/emotion_state` 命令输出格式**：末尾追加 config snapshot（见上）。
+- **CHANGELOG 维护习惯**：引入 `## Unreleased` 段，未版本化的开发中变更挂在这里。
+
+### Fixed
+
+- **`relations` 字典无界增长** → 冷用户关系按 `relation_ttl_seconds` 自动清理；过期 relation 丢弃后用户重新出现会从 baseline 起步。
+- **`active_user_dilution` 硬编码 `1/sqrt(n)`** → 改为 `1/n^dilution_exponent`，用户可调。
+- **`apply_signal` 抛 `ValueError` / `TypeError` 在消息路径上可能炸** → 新增 `try_apply_signal` 安全变体；并加 `intensity` 校验（非数字 → `TypeError`、NaN → `ValueError`、越界 clamp）。
+- **`infer_signals` 对 `?` 过度敏感** → 末尾 `?` 或疑问词才触发（见 Changed）。
+- **冷 scope 在 JSON 状态文件里持续膨胀** → 加载时 + 写盘前 + `prune_cold_state()` 三处剪枝。
+- **`_cfg_bool` 中文字符串分支** → 加 docstring 说明存在目的（手编 `config.json` 中文用户友好兜底）。
+- **`build_prompt_block` 多次注入产生重复 block** → 哨兵 + `_inject_emotion_block` 去重，invariant "system_prompt 里恰好一个 emotion block"。
+
 ## v0.2.0 - 2026-06-14
 
 ### Added
