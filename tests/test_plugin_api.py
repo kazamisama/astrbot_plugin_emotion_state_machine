@@ -555,3 +555,61 @@ def test_inject_emotion_block_normalizes_trailing_newline() -> None:
     # Single trailing newline regardless of input.
     assert result.endswith("\n")
     assert not result.endswith("\n\n")
+
+
+# ----------------------------------------------------------------------
+# _cfg_float -- non-finite value defense
+# ----------------------------------------------------------------------
+
+def test_cfg_float_rejects_nan_string() -> None:
+    """'NaN' / 'Infinity' / '-Infinity' strings are accepted by
+    ``float()`` without raising. Without an explicit finiteness check
+    they propagate into EmotionStateMachine and poison decay_factor.
+    Plugin config layer must reject them and fall back to default.
+    """
+    plugin = _make_plugin()
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 900.0
+    # Patch the fake config to return the offending string, then
+    # exercise _cfg_float directly.
+    plugin.config._values["decay_half_life_seconds"] = "NaN"
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 900.0
+
+def test_cfg_float_rejects_positive_infinity_string() -> None:
+    plugin = _make_plugin()
+    plugin.config._values["decay_half_life_seconds"] = "Infinity"
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 900.0
+
+def test_cfg_float_rejects_negative_infinity_string() -> None:
+    plugin = _make_plugin()
+    plugin.config._values["decay_half_life_seconds"] = "-Infinity"
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 900.0
+
+def test_cfg_float_rejects_nan_numeric() -> None:
+    """Even when the config layer yields a real ``float('nan')``
+    (e.g. produced programmatically upstream), _cfg_float must still
+    refuse to propagate it.
+    """
+    plugin = _make_plugin()
+    plugin.config._values["dilution_exponent"] = float("nan")
+    assert plugin._cfg_float("dilution_exponent", 0.5, 0.0) == 0.5
+
+def test_cfg_float_rejects_infinity_numeric() -> None:
+    plugin = _make_plugin()
+    plugin.config._values["dilution_exponent"] = float("inf")
+    assert plugin._cfg_float("dilution_exponent", 0.5, 0.0) == 0.5
+
+def test_cfg_float_passes_through_normal_values() -> None:
+    """Regression guard: normal finite values must keep their
+    existing behavior (min_value clamp included). The new
+    finiteness check must not regress this.
+    """
+    plugin = _make_plugin()
+    # Above min: passes through.
+    plugin.config._values["decay_half_life_seconds"] = 1800.0
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 1800.0
+    # Below min: clamped up to min.
+    plugin.config._values["decay_half_life_seconds"] = 0.5
+    assert plugin._cfg_float("decay_half_life_seconds", 900.0, 1.0) == 1.0
+    # Negative with no min: passes through (caller responsibility).
+    plugin.config._values["dilution_exponent"] = -1.0
+    assert plugin._cfg_float("dilution_exponent", 0.5, 0.0) == 0.0

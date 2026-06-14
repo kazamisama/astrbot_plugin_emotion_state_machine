@@ -4,6 +4,28 @@
 
 > 下一个版本的待发布变更。
 
+## v0.3.1 - 2026-06-14
+
+### Fixed
+
+- **`_cfg_float` NaN/inf hardens**:
+  Hand-edited `config.json` (or programmatic writes) can carry the
+  literal strings `"NaN"` / `"Infinity"` / `"-Infinity"`.
+  Python `float()` accepts all three without raising, so a value
+  like `half_life = NaN` was silently propagating into
+  `EmotionStateMachine` and poisoning every decay_factor
+  (`math.pow(2.0, -delta / NaN) = NaN`), while `half_life = inf`
+  froze the entire state machine. `_cfg_float` now rejects
+  non-finite values via `math.isfinite`, logs a WARNING, and
+  falls back to the default. Aligns with `social_context` v0.8.4
+  and `proactive_reply` v0.6.1.
+
+### Added
+
+- 6 new unit tests in `tests/test_plugin_api.py` covering the
+  NaN / +inf / -inf string + numeric cases and a regression guard
+  for normal value passthrough (including `min_value` clamp).
+
 ## v0.3.0 - 2026-06-14
 
 ### Added

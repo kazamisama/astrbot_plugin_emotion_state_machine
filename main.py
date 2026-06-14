@@ -9,6 +9,7 @@ inject a compact emotion block before LLM requests.
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -133,6 +134,21 @@ class EmotionStateMachinePlugin(Star):
         try:
             value = float(self.config.get(key, default))
         except (TypeError, ValueError):
+            value = default
+        # JSON / YAML configs may carry the literal strings
+        # "NaN", "Infinity", "-Infinity" (hand-edited config.json,
+        # or programmatic writes). float() accepts all three without
+        # raising, so we must guard finiteness explicitly. A non-finite
+        # value here propagates into EmotionStateMachine and poisons
+        # every decay_factor: half_life=inf freezes decay entirely,
+        # half_life=NaN turns every dimension into NaN on the next
+        # tick. Fall back to the default and emit a WARNING so the
+        # operator can fix the config without silently breaking state.
+        if not math.isfinite(value):
+            logger.warning(
+                f"[emotion_state_machine] _cfg_float got non-finite "
+                f"value for {key!r}: {value!r}, falling back to {default!r}"
+            )
             value = default
         if min_value is not None:
             value = max(min_value, value)
