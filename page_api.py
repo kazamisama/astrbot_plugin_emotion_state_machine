@@ -40,7 +40,14 @@ from emotion_engine import get_full_state, __version__  # type: ignore[import-un
 
 PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
 PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
-LOG = logging.getLogger("astrbot.emotion_state_machine")
+# Use AstrBot's own logger so messages flow through the user's
+# configured log filter. Per-route registration success lines are
+# logged at WARNING so they show up in the default console.
+try:
+    from astrbot.api import logger as LOG  # type: ignore
+except Exception:  # pragma: no cover - test fallback
+    import logging as _logging
+    LOG = _logging.getLogger("astrbot.emotion_state_machine")
 
 
 def _resolve_register(plugin) -> tuple[Any, str] | None:
@@ -80,7 +87,7 @@ class PluginPageApi:
                 "integration requires a newer AstrBot"
             )
         register, source = resolved
-        LOG.info(
+        LOG.warning(
             "[emotion_state_machine] registering Dashboard routes via %s",
             source,
         )
@@ -101,7 +108,7 @@ class PluginPageApi:
                 full_path = prefix + sub_path
                 try:
                     register(full_path, handler, methods, desc)
-                    LOG.info(
+                    LOG.warning(
                         "[emotion_state_machine]   registered %s [%s]",
                         full_path, ",".join(methods),
                     )
