@@ -38,6 +38,21 @@ PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
 PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
 
 
+# Module-level diagnostic — fires the moment the file is imported,
+# so we can confirm the latest code is actually being loaded.
+import os as _os_mod
+_load_marker = _os_mod.path.join(_os_mod.path.expanduser("~"), ".astrbot", "esm-debug.log")
+try:
+    with open(_load_marker, "a", encoding="utf-8") as _f:
+        from datetime import datetime as _dt2
+        _f.write(f"{_dt2.now().isoformat()} [EMT-DBG] page_api.py MODULE LOADED "
+                 f"(PLUGIN_NAME={PLUGIN_NAME})\n")
+except Exception as _e:
+    import sys
+    sys.stderr.write(f"page_api.py module-load diagnostic failed: {_e!r}\n")
+    sys.stderr.flush()
+
+
 def _diag(msg: str) -> None:
     """Diagnostic write. Tries: print → stderr → AstrBot logger → file.
 
