@@ -1,15 +1,15 @@
-/* ESM Dashboard â€” dark theme, minimal */
+/* ESM Dashboard — light theme */
 
 :root {
-  --bg: #1a1a2e; --card-bg: #16213e; --text: #e0e0e0;
-  --text-2: #888; --accent: #0f3460; --border: #0f3460;
-  --green: #4caf50; --red: #f44336; --orange: #ff9800; --blue: #42a5f5;
-  --purple: #ab47bc;
+  --bg: #f5f5f7; --card-bg: #ffffff; --text: #1a1a2e;
+  --text-2: #888; --accent: #e8edf3; --border: #e0e0e0;
+  --green: #2e7d32; --red: #c62828; --orange: #e65100; --blue: #1565c0;
+  --purple: #6a1b9a;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: var(--card-bg); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
 .brand-name { font-weight: 700; font-size: 1.2rem; }
@@ -26,15 +26,15 @@ main { padding: 20px 24px; }
 .panel.active { display: block; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.card { background: var(--card-bg); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.card { background: var(--card-bg); border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .card h2 { font-size: 1.05rem; color: var(--blue); margin-bottom: 14px; }
 .stat-card { text-align: center; padding: 24px; }
 .stat-card .num { font-size: 2rem; font-weight: 700; }
 .stat-card .label { color: var(--text-2); font-size: 0.8rem; margin-top: 4px; }
 
 .dim-row { display: flex; align-items: center; margin: 10px 0; gap: 10px; }
-.dim-label { width: 90px; font-size: 0.85rem; text-align: right; color: #aaa; flex-shrink: 0; }
-.dim-bar-bg { flex: 1; height: 18px; background: #0d0d1a; border-radius: 9px; overflow: hidden; }
+.dim-label { width: 90px; font-size: 0.85rem; text-align: right; color: #555; flex-shrink: 0; }
+.dim-bar-bg { flex: 1; height: 18px; background: #e8edf3; border-radius: 9px; overflow: hidden; }
 .dim-bar-fg { height: 100%; border-radius: 9px; transition: width 0.3s; }
 .dim-val { width: 44px; font-size: 0.85rem; text-align: left; flex-shrink: 0; }
 
@@ -48,16 +48,16 @@ select.input { min-width: 200px; }
 .input-grow { flex: 1; min-width: 200px; }
 .refresh { color: var(--text-2); font-size: 0.8rem; white-space: nowrap; }
 
-.label-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
-.label-calm { background: #37474f; } .label-happy { background: #2e7d32; }
-.label-tense { background: #c62828; } .label-annoyed { background: #e65100; }
-.label-curious { background: #1565c0; } .label-excited { background: #6a1b9a; }
-.label-quiet { background: #455a64; } .label-hurt { background: #880e4f; }
-.label-trusted { background: #2e7d32; } .label-guarded { background: #e65100; }
-.label-irritated { background: #c62828; } .label-attached { background: #6a1b9a; }
-.label-unfamiliar { background: #546e7a; } .label-neutral { background: #37474f; }
+.label-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; color: #fff; }
+.label-calm { background: #78909c; } .label-happy { background: #43a047; }
+.label-tense { background: #e53935; } .label-annoyed { background: #ef6c00; }
+.label-curious { background: #1e88e5; } .label-excited { background: #8e24aa; }
+.label-quiet { background: #90a4ae; } .label-hurt { background: #ad1457; }
+.label-trusted { background: #43a047; } .label-guarded { background: #ef6c00; }
+.label-irritated { background: #e53935; } .label-attached { background: #8e24aa; }
+.label-unfamiliar { background: #90a4ae; } .label-neutral { background: #78909c; }
 
-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: var(--card-bg); }
 th { color: var(--text-2); font-weight: 500; padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
 td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 td .dim-row { margin: 2px 0; }

@@ -72,6 +72,12 @@
         "default": "direct",
         "choices": ["direct", "occ_static", "occ_heuristic"]
     },
+    "persona_stamp": {
+        "description": "【v0.8.1】人格隔离标签",
+        "hint": "留空 = 同群所有人格共享情绪状态。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
+        "type": "string",
+        "default": ""
+    },
     "disabled_signals": {
         "description": "【信号过滤】禁用的 signal 列表",
         "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.8.1 - 2026-06-24
+
+### Added
+
+- **人格隔离**（`persona_stamp` 配置项）。留空时同群所有人格共享情绪状态（与 v0.8.0 行为一致）；
+  填入字符串后 scope key 变为 `"<group_id>:<stamp>"`，不同人格独立维护 group + relation。
+- `_render_config_snapshot` 显示当前 `persona_stamp`（空时显示 `(none — shared)`）。
+- `_conf_schema.json` 新增 `persona_stamp` 配置项。
+
+### Changed
+
+- `_scope_id` 逻辑增加 stamp 拼接，空 stamp 时零行为变化。
+
+### Fixed
+
+- Dashboard CSS 改为浅色主题（`#f5f5f7` 底 + 白色卡片），修复深色模式在 AstrBot 浅色主题下不可见的问题。
+- `app.js` API 路径从 `location.pathname` 推导（替代硬编码绝对路径），修复子路径部署时连接失败的问题。
+- `app.js` 改用 `var` 语法（兼容老版 WebView），加 XSS 防护 `esc()`，加重试提示。
+
 ## v0.8.0 - 2026-06-24
 
 ### Added

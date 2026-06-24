@@ -232,7 +232,9 @@ class EmotionStateMachinePlugin(Star):
         return self.data_dir / "emotion_state.json"
 
     def _scope_id(self, event: AstrMessageEvent) -> str:
-        return event.get_group_id() or event.unified_msg_origin or "_private"
+        base = event.get_group_id() or event.unified_msg_origin or "_private"
+        stamp = self._cfg_str("persona_stamp", "")
+        return f"{base}:{stamp}" if stamp else base
 
     def _load_state(self) -> None:
         if not self._cfg_bool("persist_state", True):
@@ -362,6 +364,7 @@ class EmotionStateMachinePlugin(Star):
             f"- inject_enabled: {self._cfg_bool('inject_enabled', True)}",
             f"- persist_state: {self._cfg_bool('persist_state', True)}",
             f"- appraisal_mode: {self._cfg_str('appraisal_mode', 'direct')}",
+            f"- persona_stamp: {self._cfg_str('persona_stamp', '') or '(none — shared across personas)'}",
             f"- decay_half_life_seconds: {decay_half_life:.0f}s",
             f"- active_window_seconds: {active_window:.0f}s",
             f"- relation_ttl_seconds: {relation_ttl:.0f}s {_days(relation_ttl)}",
@@ -775,6 +778,10 @@ class EmotionStateMachinePlugin(Star):
         ``get_webui_page()`` public API remain as fallbacks).
         """
         if not hasattr(self.context, "register_web_api"):
+            logger.info(
+                "[emotion_state_machine] context.register_web_api not "
+                "available — Dashboard page API skipped (old AstrBot version)"
+            )
             return
         try:
             from page_api import PluginPageApi
@@ -786,7 +793,9 @@ class EmotionStateMachinePlugin(Star):
         try:
             self._page_api = PluginPageApi(self)
             self._page_api.register_routes()
-            logger.info("[emotion_state_machine] Dashboard page API registered")
+            logger.info(
+                "[emotion_state_machine] Dashboard page API registered"
+            )
         except Exception as exc:
             self._page_api = None
             logger.warning(
