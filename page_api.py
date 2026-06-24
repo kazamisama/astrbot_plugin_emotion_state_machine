@@ -40,17 +40,34 @@ PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
 
 # Module-level diagnostic — fires the moment the file is imported,
 # so we can confirm the latest code is actually being loaded.
+# We write to MANY locations because AstrBot sub-processes may have
+# a different $HOME / $USERPROFILE than expected.
 import os as _os_mod
-_load_marker = _os_mod.path.join(_os_mod.path.expanduser("~"), ".astrbot", "esm-debug.log")
-try:
-    with open(_load_marker, "a", encoding="utf-8") as _f:
-        from datetime import datetime as _dt2
-        _f.write(f"{_dt2.now().isoformat()} [EMT-DBG] page_api.py MODULE LOADED "
-                 f"(PLUGIN_NAME={PLUGIN_NAME})\n")
-except Exception as _e:
-    import sys
-    sys.stderr.write(f"page_api.py module-load diagnostic failed: {_e!r}\n")
-    sys.stderr.flush()
+from datetime import datetime as _dt2
+
+_DIAG_LOCATIONS = [
+    _os_mod.path.join(_os_mod.path.expanduser("~"), ".astrbot", "esm-debug.log"),
+    _os_mod.path.join(_os_mod.path.expanduser("~"), "esm-debug.log"),
+    _os_mod.path.expandvars(r"%USERPROFILE%\\.astrbot\\esm-debug.log"),
+    r"C:\Users\chiriu\.astrbot\esm-debug.log",
+    r"C:\esm-debug.log",
+    "/tmp/esm-debug.log",
+]
+for _loc in _DIAG_LOCATIONS:
+    try:
+        _dir = _os_mod.path.dirname(_loc)
+        if _dir and not _os_mod.path.isdir(_dir):
+            _os_mod.makedirs(_dir, exist_ok=True)
+        with open(_loc, "a", encoding="utf-8") as _f:
+            _f.write(f"{_dt2.now().isoformat()} [EMT-DBG] page_api.py MODULE LOADED "
+                     f"(PLUGIN_NAME={PLUGIN_NAME}, pid={_os_mod.getpid()})\n")
+    except Exception as _e:
+        # try next location
+        pass
+# Also print to stderr with no buffering
+import sys as _sys
+_sys.stderr.write(f"[EMT-DBG] page_api.py MODULE LOADED at {_dt2.now().isoformat()}\n")
+_sys.stderr.flush()
 
 
 def _diag(msg: str) -> None:
