@@ -2,7 +2,7 @@
 
 Two responsibilities live here:
 
-1. **Prompt block** (:func:`build_prompt_block`) — produces the
+1. **Prompt block** (:func:`build_prompt_block`) -- produces the
    low-noise text the ``on_llm_request`` hook injects into the system
    prompt. Wrapped in :data:`ESM_BLOCK_START` / :data:`ESM_BLOCK_END`
    sentinel markers so re-injection can replace (not append) prior
@@ -10,9 +10,13 @@ Two responsibilities live here:
    known LLM tokenizers without interpretation.
 2. **Human-readable rendering** (:func:`format_snapshot`,
    :func:`format_relation`, :func:`format_combined_view`,
-   :func:`style_hint_for`) — produces the same text the
+   :func:`style_hint_for`) -- produces the same text the
    ``/emotion_state`` command shows, for use in debug logs and other
    plugins' status output.
+3. **ASCII chart + PAD** (:func:`compute_pad`,
+   :func:`format_group_chart`, :func:`format_relation_chart`,
+   :func:`format_combined_chart`) -- v0.6.0: PAD (Pleasure-Arousal-
+   Dominance) model alignment and horizontal bar chart rendering.
 
 ``style_hint_for`` is the bridge between the discrete label world and
 the prompt's prose. It maps ``(group_label, relation_label)`` pairs to
@@ -79,6 +83,107 @@ def format_combined_view(view: CombinedEmotionView) -> str:
     return text
 
 
+# ---------------------------------------------------------------------------
+# PAD model mapping (Mehrabian & Russell, 1974)
+# ---------------------------------------------------------------------------
+
+def compute_pad(snapshot: GroupEmotionSnapshot) -> tuple[float, float, float]:
+    """Map group dimensions to PAD (Pleasure-Arousal-Dominance).
+
+    - **P**leasure = ``valence`` (1:1 mapping).
+    - **A**rousal = ``arousal`` (1:1 mapping).
+    - **D**ominance = ``1.0 - stress`` (the bot feels in control when
+      not under pressure; ``stress -> 1.0`` means complete loss of
+      control, ``stress -> 0.0`` means full agency).
+
+    PAD is a derived view -- it does not change internal state. All
+    three values are in [0.0, 1.0].
+    """
+    return (snapshot.valence, snapshot.arousal, 1.0 - snapshot.stress)
+
+
+# ---------------------------------------------------------------------------
+# ASCII chart rendering (v0.6.0+)
+# ---------------------------------------------------------------------------
+
+_BAR_WIDTH = 10
+_BAR_FILLED = "\u2588"  # full block
+_BAR_EMPTY = "\u2591"   # light shade
+
+
+def _bar(value: float, width: int = _BAR_WIDTH) -> str:
+    """Render a horizontal bar ``width`` chars wide.
+
+    Example: ``_bar(0.75)`` -> ``"███████░░░"``.
+    """
+    filled = max(0, min(width, int(value * width + 0.5)))
+    return _BAR_FILLED * filled + _BAR_EMPTY * (width - filled)
+
+
+def format_group_chart(scope: str, snapshot: GroupEmotionSnapshot) -> str:
+    """ASCII bar chart for one group snapshot, including PAD.
+
+    Output looks like::
+
+        Group Emotion | 123456
+          valence      ████████░░ 0.78  happy
+          arousal      ██████░░░░ 0.55
+          stress       ███░░░░░░░ 0.30
+          curiosity    █████████░ 0.85
+          PAD: P=0.78 A=0.55 D=0.70
+    """
+    p, a, d = compute_pad(snapshot)
+    age = max(0.0, time.time() - snapshot.updated_at)
+    lines = [
+        f"🧭 Group Emotion | {scope}",
+        f"  valence   {_bar(snapshot.valence)} {snapshot.valence:.2f}  {snapshot.label}",
+        f"  arousal   {_bar(snapshot.arousal)} {snapshot.arousal:.2f}",
+        f"  stress    {_bar(snapshot.stress)} {snapshot.stress:.2f}",
+        f"  curiosity {_bar(snapshot.curiosity)} {snapshot.curiosity:.2f}",
+        f"  PAD: P={p:.2f} A={a:.2f} D={d:.2f}",
+        f"  active_users: {len(snapshot.active_users)} | "
+        f"signal: {snapshot.last_signal} | updated: {age:.0f}s ago",
+    ]
+    return "\n".join(lines)
+
+
+def format_relation_chart(scope: str, user_id: str, snapshot: UserRelationSnapshot) -> str:
+    """ASCII bar chart for one user relation snapshot.
+
+    Output looks like::
+
+        User Relation | 123456 / user-a
+          trust        ████████░░ 0.78  trusted
+          affection    █████████░ 0.92
+          irritation   ██░░░░░░░░ 0.15
+          familiarity  ██████░░░░ 0.62
+    """
+    age = max(0.0, time.time() - snapshot.updated_at)
+    lines = [
+        f"👤 User Relation | {scope} / {user_id}",
+        f"  trust       {_bar(snapshot.trust)} {snapshot.trust:.2f}  {snapshot.label}",
+        f"  affection   {_bar(snapshot.affection)} {snapshot.affection:.2f}",
+        f"  irritation  {_bar(snapshot.irritation)} {snapshot.irritation:.2f}",
+        f"  familiarity {_bar(snapshot.familiarity)} {snapshot.familiarity:.2f}",
+        f"  signal: {snapshot.last_signal} | transitions: {snapshot.transitions} | "
+        f"updated: {age:.0f}s ago",
+    ]
+    return "\n".join(lines)
+
+
+def format_combined_chart(view: CombinedEmotionView) -> str:
+    """Group chart + relation chart + combined label."""
+    text = format_group_chart(view.scope, view.group)
+    if view.relation is not None:
+        text += "\n\n" + format_relation_chart(view.scope, view.user_id, view.relation)
+        text += f"\n  combined_label: {view.label}"
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Prompt block
+# ---------------------------------------------------------------------------
+
 def build_prompt_block(
     scope: str,
     view_or_snapshot: Union[CombinedEmotionView, GroupEmotionSnapshot],
@@ -107,12 +212,14 @@ def build_prompt_block(
             f"familiarity={relation.familiarity:.2f}"
         )
 
+    p, a, d = compute_pad(group)
     inner = (
         "## Bot Emotion State\n"
         f"scope: {scope}\n"
         f"combined_label: {view.label}\n"
         f"group: label={group.label}, valence={group.valence:.2f}, arousal={group.arousal:.2f}, "
         f"stress={group.stress:.2f}, curiosity={group.curiosity:.2f}, active_users={len(group.active_users)}\n"
+        f"pad: P={p:.2f} A={a:.2f} D={d:.2f}\n"
         f"{relation_line}\n"
         f"last_signal: group={group.last_signal}"
         + (f", user={relation.last_signal}" if relation is not None else "")

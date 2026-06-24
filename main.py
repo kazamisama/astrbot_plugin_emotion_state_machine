@@ -29,6 +29,7 @@ try:
         GroupEmotionSnapshot,
         UserRelationSnapshot,
         build_prompt_block,
+        format_combined_chart,
         format_combined_view,
         normalize_scope,
         normalize_user_id,
@@ -437,6 +438,18 @@ class EmotionStateMachinePlugin(Star):
         view = self.machine.get_combined(scope, user_id, apply_decay=False)
         self._save_state(force=True)
         event.set_result(event.plain_result("✅ Emotion state 已重置\n\n" + format_combined_view(view)))
+
+    @filter.command("emotion_chart")
+    async def emotion_chart(self, event: AstrMessageEvent):
+        """Render the current emotion state as an ASCII bar chart.
+
+        Same data as `/emotion_state`, presented as a horizontal bar
+        chart with PAD (Pleasure-Arousal-Dominance) alignment.
+        """
+        scope = self._scope_id(event)
+        user_id = str(event.get_sender_id() or "")
+        view = self.machine.get_combined(scope, user_id)
+        event.set_result(event.plain_result(format_combined_chart(view)))
 
     @filter.command("emotion_prompt")
     async def emotion_prompt(self, event: AstrMessageEvent):

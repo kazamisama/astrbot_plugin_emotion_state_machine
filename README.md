@@ -58,6 +58,7 @@ group_delta = raw_delta * signal_group_weight * 1 / sqrt(active_users)
 | --- | --- |
 | `/emotion_state` | 查看当前会话的 group 状态和当前发送者 relation 状态 |
 | `/emotion_signal <signal> [intensity]` | 对当前会话和当前发送者手动施加一个信号，例如 `/emotion_signal praise 1.2` |
+| `/emotion_chart` | v0.6.0+。与 `/emotion_state` 相同数据，但以 ASCII 横条图 + PAD 三维值呈现 |
 | `/emotion_prompt` | 预览将注入 LLM 的 prompt block |
 | `/emotion_reset` | 管理员命令，重置当前会话 group 状态并清空该会话下的用户关系 |
 

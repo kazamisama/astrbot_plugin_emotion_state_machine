@@ -125,9 +125,14 @@ from .machine import EmotionStateMachine
 from .prompt import (
     ESM_BLOCK_END,
     ESM_BLOCK_START,
+    _bar,
     build_prompt_block,
+    compute_pad,
+    format_combined_chart,
     format_combined_view,
+    format_group_chart,
     format_relation,
+    format_relation_chart,
     format_snapshot,
     style_hint_for,
 )
@@ -188,9 +193,13 @@ __all__ = [
     # prompt
     "ESM_BLOCK_START",
     "ESM_BLOCK_END",
+    "build_prompt_block",
+    "compute_pad",
     "format_snapshot",
     "format_relation",
     "format_combined_view",
+    "format_group_chart",
+    "format_relation_chart",
+    "format_combined_chart",
     "style_hint_for",
-    "build_prompt_block",
 ]

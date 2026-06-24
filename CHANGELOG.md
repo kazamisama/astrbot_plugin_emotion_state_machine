@@ -4,6 +4,21 @@
 
 > 下一个版本的待发布变更。
 
+## v0.6.0 - 2026-06-24
+
+### Added
+
+- **PAD 模型对齐**（Mehrabian & Russell, 1974）。`compute_pad(snapshot)` 从群维度映射到 PAD 三维（Pleasure=valence, Arousal=arousal, Dominance=1-stress）。不改变内部存储，作为衍生视图加入 prompt block 和 chart 输出。
+- **ASCII bar chart 可视化**。新增 `/emotion_chart` 命令，输出横条图 + PAD 值，比 `/emotion_state` 更直观。对应函数 `format_group_chart` / `format_relation_chart` / `format_combined_chart` 全部导出为公共 API。
+- **Prompt block 新增 PAD 行**。`pad: P=0.78 A=0.55 D=0.70` 注入到 LLM 请求，供下游模型利用 PAD 维度调节对话策略。
+
+### Changed
+
+- `prompt.py` 新增 `compute_pad` / `_bar` / `format_group_chart` / `format_relation_chart` / `format_combined_chart`。
+- `build_prompt_block` 输出中新增 `pad:` 行。
+- `__init__.py` 重导出 6 个新公共符号。
+- `main.py` 新增 `/emotion_chart` 命令处理函数。
+
 ## v0.5.0 - 2026-06-24
 
 ### Added
