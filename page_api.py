@@ -38,78 +38,86 @@ PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
 PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
 
 
-# Module-level diagnostic — fires the moment the file is imported,
-# so we can confirm the latest code is actually being loaded.
-# We write to MANY locations because AstrBot sub-processes may have
-# a different $HOME / $USERPROFILE than expected.
-import os as _os_mod
+# Module-level diagnostic — fires the moment the file is imported.
+# Uses LOG.error + os.write(2, ...) + file fallback so we ALWAYS
+# surface in the AstrBot console even if stdout/logger are captured.
+import os as _os_mod, sys as _sys
 from datetime import datetime as _dt2
 
-_DIAG_LOCATIONS = [
+_MODULE_LINE = (f"[EMT-DBG] page_api.py MODULE LOADED at {_dt2.now().isoformat()} "
+                f"(PLUGIN_NAME={PLUGIN_NAME}, pid={_os_mod.getpid()})")
+
+# ERROR-level AstrBot log — never filtered
+try:
+    from astrbot.api import logger as _LOG
+    _LOG.error(_MODULE_LINE)
+except Exception:
+    pass
+
+# os.write(2, ...) — bypasses sys.stderr capture
+try:
+    _os_mod.write(2, (_MODULE_LINE + "\n").encode("utf-8", errors="replace"))
+except Exception:
+    pass
+
+# file fallback to multiple locations
+for _loc in [
     _os_mod.path.join(_os_mod.path.expanduser("~"), ".astrbot", "esm-debug.log"),
     _os_mod.path.join(_os_mod.path.expanduser("~"), "esm-debug.log"),
-    _os_mod.path.expandvars(r"%USERPROFILE%\\.astrbot\\esm-debug.log"),
     r"C:\Users\chiriu\.astrbot\esm-debug.log",
     r"C:\esm-debug.log",
-    "/tmp/esm-debug.log",
-]
-for _loc in _DIAG_LOCATIONS:
+    r"C:\Windows\Temp\esm-debug.log",
+]:
     try:
-        _dir = _os_mod.path.dirname(_loc)
-        if _dir and not _os_mod.path.isdir(_dir):
-            _os_mod.makedirs(_dir, exist_ok=True)
+        _d = _os_mod.path.dirname(_loc)
+        if _d and not _os_mod.path.isdir(_d):
+            _os_mod.makedirs(_d, exist_ok=True)
         with open(_loc, "a", encoding="utf-8") as _f:
-            _f.write(f"{_dt2.now().isoformat()} [EMT-DBG] page_api.py MODULE LOADED "
-                     f"(PLUGIN_NAME={PLUGIN_NAME}, pid={_os_mod.getpid()})\n")
-    except Exception as _e:
-        # try next location
-        pass
-# Also print to stderr with no buffering
-import sys as _sys
-_sys.stderr.write(f"[EMT-DBG] page_api.py MODULE LOADED at {_dt2.now().isoformat()}\n")
-_sys.stderr.flush()
+            _f.write(_MODULE_LINE + "\n")
+        break
+    except Exception:
+        continue
 
 
 def _diag(msg: str) -> None:
-    """Diagnostic write. Tries: print → stderr → AstrBot logger → file.
+    """Diagnostic write. Pushes to as many channels as possible.
 
-    We use ALL four channels because AstrBot sometimes captures stdout,
-    filters third-party loggers, and otherwise suppresses diagnostic
-    output. The file-based path is the reliable one — write to
-    ``<data_dir>/esm-debug.log`` and operators can tail it directly.
+    ERROR-level AstrBot log is always visible; os.write(2, ...) bypasses
+    stdout capture; the file fallback survives even sandbox virtualisation.
     """
     line = f"[EMT-DBG] {msg}"
-    # 1. stdout
-    try:
-        print(line, flush=True)
-    except Exception:
-        pass
-    # 2. stderr
-    try:
-        import sys
-        sys.stderr.write(line + "\n")
-        sys.stderr.flush()
-    except Exception:
-        pass
-    # 3. AstrBot logger (may be filtered)
+    import os as _os, sys as _sys
+    # 1. ERROR-level logger — never filtered
     try:
         from astrbot.api import logger as LOG
-        LOG.warning(msg)
+        LOG.error(line)
     except Exception:
         pass
-    # 4. file at a fixed absolute path — the most reliable fallback
-    #    (no try/except so the exception surfaces in the AstrBot console
-    #    if writing fails)
-    import os as _os
-    _log_path = _os.path.join(
-        _os.path.expanduser("~"), ".astrbot", "esm-debug.log"
-    )
-    _log_dir = _os.path.dirname(_log_path)
-    if not _os.path.isdir(_log_dir):
-        _os.makedirs(_log_dir, exist_ok=True)
-    with open(_log_path, "a", encoding="utf-8") as f:
-        from datetime import datetime as _dt
-        f.write(f"{_dt.now().isoformat()} {line}\n")
+    # 2. os.write to fd 2 (stderr) — bypasses sys.stderr capture
+    try:
+        _os.write(2, (line + "\n").encode("utf-8", errors="replace"))
+    except Exception:
+        pass
+    # 3. file at multiple fallback paths
+    _DIAG_LOCATIONS = [
+        _os.path.join(_os.path.expanduser("~"), ".astrbot", "esm-debug.log"),
+        _os.path.join(_os.path.expanduser("~"), "esm-debug.log"),
+        r"C:\Users\chiriu\.astrbot\esm-debug.log",
+        r"C:\esm-debug.log",
+        r"C:\Windows\Temp\esm-debug.log",
+        "/tmp/esm-debug.log",
+    ]
+    for _loc in _DIAG_LOCATIONS:
+        try:
+            _dir = _os.path.dirname(_loc)
+            if _dir and not _os.path.isdir(_dir):
+                _os.makedirs(_dir, exist_ok=True)
+            with open(_loc, "a", encoding="utf-8") as f:
+                from datetime import datetime as _dt
+                f.write(f"{_dt.now().isoformat()} {line}\n")
+            break  # success — stop trying
+        except Exception:
+            continue
 
 
 def _resolve_register(plugin) -> tuple[Any, str] | None:
