@@ -110,9 +110,11 @@ class EmotionStateMachinePlugin(Star):
             appraisal_mode=self._cfg_str("appraisal_mode", "direct"),
         )
         self._last_save_time = 0.0
-        self._load_state()
-        # Register Dashboard WebUI page API (no-op on old AstrBot)
+        # Register Dashboard routes FIRST so they remain available even
+        # if _load_state() raises (e.g. corrupt JSON). The handlers
+        # reference self.machine which is created above.
         self._register_official_page_api_if_available()
+        self._load_state()
 
     def _cfg_bool(self, key: str, default: bool) -> bool:
         """Coerce a config value to bool, tolerating common string forms.
