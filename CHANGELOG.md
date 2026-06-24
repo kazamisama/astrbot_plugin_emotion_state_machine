@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v0.8.0 - 2026-06-24
+
+### Added
+
+- **AstrBot Dashboard 集成**。通过 `context.register_web_api` 注册 API 路由，
+  前端拆为 `pages/dashboard/index.html` + `app.js` + `styles.css`，AstrBot
+  自动托管 `pages/` 目录。
+  - 两个标签页：总览（群聊数/信号数/模式/用户数统计卡片）和群聊状态（scope 选择器 +
+    群情绪卡片 + 用户关系表格 + 搜索过滤）。
+  - API 端点：`/page/health`、`/page/state`、`/page/state/<scope>`。
+- `emotion_engine.__version__` 常量（`"0.8.0"`）。
+- 旧 WebUI（`/esm/` + `render_webui_page()`）完整保留，与新 Dashboard 互不冲突。
+
+### Changed
+
+- `main.py`: `__init__` 末尾调用 `_register_official_page_api_if_available()`。
+- `page_api.py`: 已预置，`PluginPageApi.register_routes()` 注册 3 个端点。
+
 ## v0.7.0 - 2026-06-24
 
 ### Added

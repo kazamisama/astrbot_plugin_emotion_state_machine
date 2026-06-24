@@ -47,6 +47,10 @@ flat re-export surface is frozen for the foreseeable future.
 
 from __future__ import annotations
 
+# Package version — keep in sync with metadata.yaml.
+# Used by page_api.py for the /health endpoint.
+__version__ = "0.8.0"
+
 # Re-exports — every name here must remain importable from
 # ``emotion_engine`` for backward compat with the pre-v0.4.0 single-file
 # module. The grouping below mirrors the layout in :data:`__all__`.

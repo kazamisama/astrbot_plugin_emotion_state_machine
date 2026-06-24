@@ -111,6 +111,8 @@ class EmotionStateMachinePlugin(Star):
         )
         self._last_save_time = 0.0
         self._load_state()
+        # Register Dashboard WebUI page API (no-op on old AstrBot)
+        self._register_official_page_api_if_available()
 
     def _cfg_bool(self, key: str, default: bool) -> bool:
         """Coerce a config value to bool, tolerating common string forms.
@@ -759,6 +761,37 @@ class EmotionStateMachinePlugin(Star):
     def list_disabled_signals(self) -> list[str]:
         """The currently-disabled signal names (lowercased), as a list."""
         return sorted(self._get_disabled_signals())
+
+    def _register_official_page_api_if_available(self) -> None:
+        """Register the Dashboard WebUI page API.
+
+        On AstrBot versions with ``context.register_web_api`` the
+        ``page_api.PluginPageApi`` class wires GET endpoints under
+        ``/astrbot_plugin_emotion_state_machine/page/`` that the
+        Dashboard frontend in ``pages/dashboard/`` calls.
+
+        Missing or older versions: silently skip, plugin stays
+        operational (the inline WebUI at ``/esm/`` and the
+        ``get_webui_page()`` public API remain as fallbacks).
+        """
+        if not hasattr(self.context, "register_web_api"):
+            return
+        try:
+            from page_api import PluginPageApi
+        except Exception as exc:
+            logger.warning(
+                f"[emotion_state_machine] page_api import failed: {exc!r}"
+            )
+            return
+        try:
+            self._page_api = PluginPageApi(self)
+            self._page_api.register_routes()
+            logger.info("[emotion_state_machine] Dashboard page API registered")
+        except Exception as exc:
+            self._page_api = None
+            logger.warning(
+                f"[emotion_state_machine] page_api register failed: {exc!r}"
+            )
 
     async def terminate(self):
         self._save_state(force=True)

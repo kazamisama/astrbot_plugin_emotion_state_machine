@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESM · 情绪状态机</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">ESM</span>
+      <span class="brand-sub">　情绪状态机</span>
+    </div>
+    <div class="status" id="health">连接中…</div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">总览</button>
+    <button class="tab" data-tab="groups">群聊状态</button>
+  </nav>
+
+  <main>
+    <section class="panel active" data-panel="overview">
+      <div class="cards" id="overview-cards"></div>
+    </section>
+
+    <section class="panel" data-panel="groups">
+      <div class="toolbar">
+        <select id="scope-select" class="input">
+          <option value="">-- 选择群聊 --</option>
+        </select>
+        <input id="user-filter" class="input input-grow" type="text" placeholder="搜索用户 ID…" oninput="filterUsers()">
+        <span class="refresh" id="refresh-hint"></span>
+      </div>
+      <div id="group-card"></div>
+      <div class="card" id="user-card" style="display:none">
+        <h2>用户关系</h2>
+        <div id="user-table"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>
