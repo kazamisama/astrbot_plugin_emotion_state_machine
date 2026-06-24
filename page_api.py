@@ -6,20 +6,28 @@ that the AstrBot Dashboard frontend (loaded via the bridge SDK in
 ``/health`` (probe), ``/state`` (full dump), ``/state/<scope>``
 (single scope).
 
-Two registration backends are tried in order:
+Version note
+-------------
 
-1. ``context.register_web_api`` — the canonical AstrBot Dashboard API.
-   This is what ``astrbot_plugin_engram_core`` uses.
-2. ``astrbot.api.star.register`` — module-level fallback for older
-   AstrBot versions that exposed the function at module scope instead
-   of binding it on the context. Same signature, same effect.
+engram-core registers routes as ``f"/{PLUGIN_NAME}/page/{name}"``
+(full plugin-prefixed path). Some AstrBot versions of ``register_web_api``
+add the plugin prefix internally, in which case the full path produces
+a doubled prefix and the bridge can't find the route. To handle both
+shapes, we register each endpoint under TWO paths:
 
-If both fail, the caller (``main._register_official_page_api_if_available``)
-logs a warning so the operator can see why the WebUI is offline.
+- the plugin-prefixed path (matches engram's convention)
+- the short ``/page/...`` path (fallback if the bridge's prefix differs)
+
+If both succeed, the bridge queries hit whichever path matches its
+own prefix shape. If only one succeeds, the warning log will say which.
+
+If neither backend is available, registration is skipped and the
+inline WebUI at ``/esm/`` remains as the fallback.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Any
@@ -32,25 +40,22 @@ from emotion_engine import get_full_state, __version__  # type: ignore[import-un
 
 PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
 PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
+LOG = logging.getLogger("astrbot.emotion_state_machine")
 
 
 def _resolve_register(plugin) -> tuple[Any, str] | None:
-    """Return a callable ``register(path, handler, methods, desc)``,
-    or ``None`` if neither backend is available.
+    """Return a callable ``register(path, handler, methods, desc)``.
 
-    Tries ``context.register_web_api`` first (matches engram's
-    pattern). Falls back to ``astrbot.api.star.register`` for older
-    AstrBot versions. Returns a 2-tuple ``(callable, source)`` so the
-    caller can log which backend was used.
+    Only accepts ``context.register_web_api`` — that's the canonical
+    AstrBot Dashboard API. The module-level ``astrbot.api.star.register``
+    is for LLM tool registration (different signature, different
+    purpose) and would silently no-op or error if called with web-API
+    arguments.
     """
     ctx = getattr(plugin, "context", None)
     if ctx is not None and hasattr(ctx, "register_web_api"):
         return ctx.register_web_api, "context.register_web_api"
-    try:
-        from astrbot.api.star import register as star_register
-        return star_register, "astrbot.api.star.register"
-    except Exception:
-        return None
+    return None
 
 
 class PluginPageApi:
@@ -62,36 +67,53 @@ class PluginPageApi:
         self.plugin = plugin
 
     def register_routes(self) -> None:
-        """Register the three page endpoints under PAGE_API_PREFIX.
+        """Register the three page endpoints under both path shapes.
 
-        Logs each path at INFO level so operators can verify what got
-        registered. Throws if no register backend is available; the
-        caller in main.py catches and logs a WARNING.
+        Logs each successful registration at INFO and each failure at
+        WARNING. Throws only if NO registration at all is possible
+        (which the caller in main.py catches).
         """
         resolved = _resolve_register(self.plugin)
         if resolved is None:
             raise RuntimeError(
-                "no register_web_api on context and astrbot.api.star.register "
-                "is not importable — Dashboard integration unavailable on "
-                "this AstrBot version"
+                "context.register_web_api not available — Dashboard "
+                "integration requires a newer AstrBot"
             )
         register, source = resolved
-        import logging
-        log = logging.getLogger("astrbot.emotion_state_machine")
+        LOG.info(
+            "[emotion_state_machine] registering Dashboard routes via %s",
+            source,
+        )
 
-        routes = [
-            (f"{PAGE_API_PREFIX}/health", self._health, ["GET"],
-             "ESM health + version info"),
-            (f"{PAGE_API_PREFIX}/state", self._full_state, ["GET"],
-             "ESM full emotion state (all scopes)"),
-            (f"{PAGE_API_PREFIX}/state/<scope>", self._scope_detail,
-             ["GET"], "ESM single scope detail"),
+        handlers = [
+            ("/health", self._health, ["GET"], "ESM health probe"),
+            ("/state", self._full_state, ["GET"],
+             "ESM full emotion state"),
+            ("/state/<scope>", self._scope_detail, ["GET"],
+             "ESM single scope detail"),
         ]
-        for path, handler, methods, desc in routes:
-            register(path, handler, methods, desc)
-            log.info(
-                "[emotion_state_machine] registered %s [%s] via %s",
-                path, ",".join(methods), source,
+        # Register each endpoint under BOTH path shapes to maximize
+        # compatibility across AstrBot versions.
+        prefix_variants = [PAGE_API_PREFIX, "/page"]
+        ok_count = 0
+        for sub_path, handler, methods, desc in handlers:
+            for prefix in prefix_variants:
+                full_path = prefix + sub_path
+                try:
+                    register(full_path, handler, methods, desc)
+                    LOG.info(
+                        "[emotion_state_machine]   registered %s [%s]",
+                        full_path, ",".join(methods),
+                    )
+                    ok_count += 1
+                except Exception as exc:
+                    LOG.warning(
+                        "[emotion_state_machine]   failed %s: %r",
+                        full_path, exc,
+                    )
+        if ok_count == 0:
+            raise RuntimeError(
+                "all route registrations failed — check AstrBot version"
             )
 
     # ---------- handlers ----------
