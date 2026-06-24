@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.8.2 - 2026-06-24
+
+### Changed
+
+- `metadata.yaml` 移除 `repo:` 字段。AstrBot Dashboard 自身在插件市场里调 `cloud.astrbot.app/api/v1/github/repo-info` 会被云端 CORS 拒掉（origin = `http://127.0.0.1:6185`），日志里一片 `Failed to load resource: net::ERR_FAILED`。移除后 Dashboard 不会再为 ESM 触发这个请求。其他插件仍可能有同样问题——等 AstrBot 云端修 CORS 后再加回。
+
 ## v0.8.1 - 2026-06-24
 
 ### Added
