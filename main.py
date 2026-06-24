@@ -101,6 +101,7 @@ class EmotionStateMachinePlugin(Star):
             relation_ttl_seconds=self._cfg_float("relation_ttl_seconds", 604800.0, 1.0),
             group_ttl_seconds=self._cfg_float("group_ttl_seconds", 2592000.0, 1.0),
             dilution_exponent=self._cfg_float("dilution_exponent", 0.5, 0.0),
+            appraisal_mode=self._cfg_str("appraisal_mode", "direct"),
         )
         self._last_save_time = 0.0
         self._load_state()
@@ -192,6 +193,19 @@ class EmotionStateMachinePlugin(Star):
         if min_value is not None:
             value = max(min_value, value)
         return value
+
+    def _cfg_str(self, key: str, default: str) -> str:
+        """Read a string config value, falling back to ``default`` on
+        non-string or missing input.
+
+        Strips whitespace. Returns ``default`` for ``None`` and non-str
+        types so the caller never sees an unexpected type (e.g. an int
+        that a misconfigured web admin accidentally wrote).
+        """
+        raw = self.config.get(key, default)
+        if isinstance(raw, str):
+            return raw.strip()
+        return str(default) if default else ""
 
     def _resolve_data_dir(self) -> Path:
         base = Path("data") / "plugin_data" / "astrbot_plugin_emotion_state_machine"
@@ -339,6 +353,7 @@ class EmotionStateMachinePlugin(Star):
             f"- only_group: {self._cfg_bool('only_group', True)}",
             f"- inject_enabled: {self._cfg_bool('inject_enabled', True)}",
             f"- persist_state: {self._cfg_bool('persist_state', True)}",
+            f"- appraisal_mode: {self._cfg_str('appraisal_mode', 'direct')}",
             f"- decay_half_life_seconds: {decay_half_life:.0f}s",
             f"- active_window_seconds: {active_window:.0f}s",
             f"- relation_ttl_seconds: {relation_ttl:.0f}s {_days(relation_ttl)}",
@@ -495,6 +510,19 @@ class EmotionStateMachinePlugin(Star):
             normalize_user_id(user_id),
             apply_decay=apply_decay,
         )
+
+    def set_appraisal_mode(self, mode: str) -> None:
+        """Switch the appraisal estimator at runtime (v0.5.0+).
+
+        Valid modes: ``"direct"`` (v0.4.0 behavior), ``"occ_static"``
+        (static OCC via ``SIGNAL_APPRAISAL_PROFILES``),
+        ``"occ_heuristic"`` (OCC + text/group/trust heuristics).
+
+        The switch takes effect immediately on the next message or
+        external signal call. Raises ``ValueError`` for unknown modes.
+        Persists the new mode on the next save.
+        """
+        self.machine.set_appraisal_mode(mode)
 
     def observe_text(
         self,

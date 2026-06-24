@@ -80,12 +80,54 @@ Use this as subtle continuity only. Do not mention numeric scores unless explici
 
 主要配置见 `_conf_schema.json`：
 
+- `appraisal_mode`：v0.5.0 新增。情绪评价模式（`"direct"` / `"occ_static"` / `"occ_heuristic"`）。默认 `"direct"` 与 v0.4.0 行为一致；`"occ_static"` 走静态 OCC 评价变量转维度；`"occ_heuristic"` 额外启用文本/群状态/用户关系启发式。详见 [OCC 评价层](#occ-评价层-v050)。
 - `enabled`：总开关
 - `only_group`：是否仅群聊生效
 - `inject_enabled`：是否在 LLM 请求前注入情绪摘要
 - `persist_state`：是否持久化状态
 - `decay_half_life_seconds`：情绪回归基线半衰期
 - `active_window_seconds`：活跃用户统计窗口，用于群聊稀释
+
+## OCC 评价层（v0.5.0）
+
+v0.5.0 引入了三种情绪评价模式（通过 `appraisal_mode` 配置切换）：
+
+| 模式 | 算法 | 行为变化 |
+|---|---|---|
+| `direct` | 信号 → 维度权重表（v0.4.0 行为） | 零变化，bit-identical |
+| `occ_static` | 信号 → 10 个 OCC 评价变量 → 维度 delta | 方向一致，量级略高（+50% 以内），调参更细 |
+| `occ_heuristic` | OCC + 6 个纯函数启发式 | 同 occ_static，额外从文本特征微调 |
+
+三者的核心区别在"评价变量"层——`direct` 直接给信号分配维度权重（`praise → {valence: +0.10, ...}`），OCC 模式先给信号分配一组心理学的**评价变量**（如 praiseworthiness, desirability, blameworthiness, novelty），再通过这些变量影响维度。
+
+评价变量 → 维度映射表（`APPRAISAL_TO_DIMENSION_GROUP / _RELATION`）是跨信号共享的——"praiseworthiness"对所有 signal 的影响系数相同，调一次生效所有信号。
+
+### 启发式列表（仅 `occ_heuristic` 启用）
+
+| 启发式 | 影响的变量 | 条件 |
+|---|---|---|
+| 文本标点 / 重复 / 长度 | arousal | 感叹号、问号、叠字、长文 |
+| emoji 极性 | desirability / undesirability | 正向/负向 emoji |
+| 用户信任度 | praiseworthiness | 信任用户×1.1，吵架用户×0.5 |
+| 群紧张水平 | arousal | 紧张群 ×1.2，冷淡群 ×0.8 |
+| 同类信号习惯化 | expectedness | 2 分钟内同类信号重复 |
+| 被 @ 触发 | arousal +0.1, expectedness ×0.5 | `mentioned=True` |
+
+所有启发式为纯函数，零 LLM，零网络调用。详见 `emotion_engine/appraisal_heuristics.py`。
+
+### 配置示例
+
+```json
+{
+  "appraisal_mode": "occ_heuristic"
+}
+```
+
+运行时切换（其他插件调用）：
+```python
+plugin = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
+plugin.set_appraisal_mode("occ_static")
+```
 
 ## 下一步可扩展方向
 

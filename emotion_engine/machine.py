@@ -28,12 +28,17 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .appraisal import apply_weights
+from .appraisal import (
+    DirectEstimator,
+    OCCHeuristicEstimator,
+    apply_weights,
+    get_estimator,
+)
+from .appraisal_heuristics import AppraisalContext
 from .defaults import (
+    APPRAISAL_MODES,
     GROUP_BASELINE,
-    GROUP_SIGNAL_WEIGHTS,
     RELATION_BASELINE,
-    RELATION_SIGNAL_WEIGHTS,
     SIGNAL_LAYER_WEIGHTS,
 )
 from .labels import derive_group_label, derive_relation_label
@@ -64,6 +69,7 @@ class EmotionStateMachine:
         relation_ttl_seconds: float = 604800.0,
         group_ttl_seconds: float = 2592000.0,
         dilution_exponent: float = 0.5,
+        appraisal_mode: str = "direct",
     ):
         self.decay_half_life_seconds = max(1.0, float(decay_half_life_seconds))
         self.active_window_seconds = max(1.0, float(active_window_seconds))
@@ -72,6 +78,27 @@ class EmotionStateMachine:
         self.dilution_exponent = max(0.0, min(2.0, float(dilution_exponent)))
         self.groups: dict[str, GroupEmotionSnapshot] = {}
         self.relations: dict[str, dict[str, UserRelationSnapshot]] = {}
+        # OCC appraisal layer (v0.5.0+)
+        self.appraisal_mode: str = appraisal_mode
+        self._estimator = get_estimator(appraisal_mode)
+        # Sliding window of recent (signal, timestamp) per scope, used by
+        # OCCHeuristicEstimator for habituation. Max 5 entries, TTL 5 min.
+        self.recent_signals: dict[str, list[tuple[str, float]]] = {}
+
+    def set_appraisal_mode(self, mode: str) -> None:
+        """Switch the estimator at runtime.
+
+        Safe to call between events (not during an in-flight
+        ``apply_interaction`` — events are synchronous in this engine,
+        so there is no concurrent access). The new mode takes effect
+        on the next call to :meth:`apply_interaction`,
+        :meth:`observe_text`, etc.
+
+        Raises ``ValueError`` for unknown modes (same as
+        :func:`~emotion_engine.appraisal.get_estimator`).
+        """
+        self.appraisal_mode = mode
+        self._estimator = get_estimator(mode)
 
     @property
     def states(self) -> dict[str, GroupEmotionSnapshot]:
@@ -280,6 +307,40 @@ class EmotionStateMachine:
         """Backward-compatible group-only transition."""
         return self.apply_interaction(scope, None, event).group
 
+    def _append_recent_signal(self, scope: str, signal: str, timestamp: float) -> None:
+        """Append to the per-scope recent-signal sliding window.
+
+        Caps at 5 entries and drops entries older than 300 seconds.
+        Calling this is a no-op for ``appraisal_mode != "occ_heuristic"``
+        (the window is never read outside that mode).
+        """
+        bucket = self.recent_signals.setdefault(scope, [])
+        bucket.append((signal, timestamp))
+        cutoff = timestamp - 300.0
+        while bucket and bucket[0][1] < cutoff:
+            bucket.pop(0)
+        while len(bucket) > 5:
+            bucket.pop(0)
+
+    def _build_appraisal_context(self, scope: str, event: EmotionEvent) -> AppraisalContext | None:
+        """Build context for the heuristic estimator, or return None.
+
+        We skip building the context when the estimator doesn't need
+        it (direct / occ_static) to avoid the overhead of the recent-
+        signal lookup. The heuristic estimator gracefully handles a
+        None context by falling back to the static profile.
+        """
+        if not isinstance(self._estimator, OCCHeuristicEstimator):
+            return None
+        return AppraisalContext(
+            text=event.text,
+            mentioned=event.mentioned,
+            timestamp=event.timestamp,
+            group=self.groups.get(normalize_scope(scope)),
+            relation=None,  # caller fills this
+            recent_signals=self.recent_signals.get(normalize_scope(scope)),
+        )
+
     def apply_interaction(self, scope: str, user_id: str | None, event: EmotionEvent) -> CombinedEmotionView:
         scope = normalize_scope(scope)
         normalized_user = normalize_user_id(user_id) if user_id else ""
@@ -295,7 +356,24 @@ class EmotionStateMachine:
         group_multiplier = group_weight * self._active_user_dilution(len(group.active_users) or 1)
         relation_multiplier = relation_weight
 
-        apply_weights(group, GROUP_SIGNAL_WEIGHTS.get(event.signal, {}), intensity * group_multiplier)
+        # Ask the estimator for dimension deltas (signals → flat {dim: delta}).
+        # The estimator is chosen by ``self.appraisal_mode`` at init or via
+        # ``set_appraisal_mode``. DirectEstimator returns the v0.4.0 tables;
+        # OCC estimators return per-signal appraisal profiles flattened through
+        # the appraisal→dimension mapping.
+        ctx = None
+        if normalized_user:
+            # Fill relation into the context for heuristic use
+            ctx = self._build_appraisal_context(scope, event)
+            if ctx is not None:
+                ctx.relation = relation
+        group_deltas, relation_deltas = self._estimator.compute(
+            event.signal, intensity, ctx,
+        )
+
+        # Scale by intensity × layer multiplier and apply via the same
+        # low-level mutator used in v0.4.0.
+        apply_weights(group, group_deltas, intensity * group_multiplier)
         group.last_signal = event.signal
         group.last_reason = event.reason or event.signal
         group.updated_at = float(event.timestamp)
@@ -303,12 +381,15 @@ class EmotionStateMachine:
         group.label = derive_group_label(group)
 
         if relation is not None:
-            apply_weights(relation, RELATION_SIGNAL_WEIGHTS.get(event.signal, {}), intensity * relation_multiplier)
+            apply_weights(relation, relation_deltas, intensity * relation_multiplier)
             relation.last_signal = event.signal
             relation.last_reason = event.reason or event.signal
             relation.updated_at = float(event.timestamp)
             relation.transitions += 1
             relation.label = derive_relation_label(relation)
+
+        # Track recent signals for habituation (only matters in heuristic mode)
+        self._append_recent_signal(scope, event.signal, event.timestamp)
 
         return CombinedEmotionView(scope=scope, user_id=normalized_user, group=group, relation=relation)
 
@@ -348,8 +429,20 @@ class EmotionStateMachine:
         return view if view is not None else self.get_combined(scope, user_id, now=now, apply_decay=True)
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-compatible dict.
+
+        Recent-signals are serialized as ``list[list]`` (since JSON has
+        no native tuple type — each entry becomes ``[signal, ts]``).
+        The 300-second TTL and 5-entry cap are enforced at insert time
+        in :meth:`_append_recent_signal`, so no pruning is needed here.
+        """
+        recent: dict[str, list[list[Any]]] = {}
+        for scope, bucket in self.recent_signals.items():
+            if bucket:
+                recent[scope] = [list(e) for e in bucket]
         return {
-            "version": 2,
+            "version": 3,
+            "appraisal_mode": self.appraisal_mode,
             "decay_half_life_seconds": self.decay_half_life_seconds,
             "active_window_seconds": self.active_window_seconds,
             "relation_ttl_seconds": self.relation_ttl_seconds,
@@ -360,10 +453,16 @@ class EmotionStateMachine:
                 scope: {user_id: snapshot.to_dict() for user_id, snapshot in bucket.items()}
                 for scope, bucket in self.relations.items()
             },
+            "recent_signals": recent,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, decay_half_life_seconds: float | None = None) -> "EmotionStateMachine":
+        # Appraisal mode: default "direct" for backward compat with
+        # v0.4.0 JSON files that don't have this field.
+        appraisal_mode = str(data.get("appraisal_mode", "direct"))
+        if appraisal_mode not in APPRAISAL_MODES:
+            appraisal_mode = "direct"
         machine = cls(
             decay_half_life_seconds=(
                 decay_half_life_seconds
@@ -374,6 +473,7 @@ class EmotionStateMachine:
             relation_ttl_seconds=float(data.get("relation_ttl_seconds", 604800.0) or 604800.0),
             group_ttl_seconds=float(data.get("group_ttl_seconds", 2592000.0) or 2592000.0),
             dilution_exponent=float(data.get("dilution_exponent", 0.5) or 0.5),
+            appraisal_mode=appraisal_mode,
         )
 
         raw_groups = data.get("groups", data.get("states", {}))
@@ -394,6 +494,21 @@ class EmotionStateMachine:
                         machine.relations[normalized_scope][normalize_user_id(str(user_id))] = (
                             UserRelationSnapshot.from_dict(raw)
                         )
+
+        # Restore recent signals (v0.5.0+, not present in v0.4.0 JSON).
+        # Each entry serialized as ``[signal, ts]`` (JSON has no tuple).
+        raw_recent = data.get("recent_signals", {})
+        if isinstance(raw_recent, dict):
+            for scope, bucket in raw_recent.items():
+                if isinstance(bucket, list):
+                    restored: list[tuple[str, float]] = []
+                    for entry in bucket:
+                        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                            sig, ts = entry[0], entry[1]
+                            if isinstance(sig, str) and isinstance(ts, (int, float)):
+                                restored.append((sig, float(ts)))
+                    if restored:
+                        machine.recent_signals[normalize_scope(scope)] = restored
 
         # NOTE: cold-scope pruning is intentionally NOT done here.
         # ``from_dict`` is a pure data loader — tests use synthetic

@@ -4,6 +4,44 @@
 
 > 下一个版本的待发布变更。
 
+## v0.5.0 - 2026-06-24
+
+### Added
+
+- **OCC 评价层**（Ortony, Clore & Collins 1988）。引入了 `appraisal_mode` 配置项，三种策略：
+  - `"direct"`（默认）— v0.4.0 直接查表，零行为变化。
+  - `"occ_static"` — OCC 两层查表：signal → appraisal profile → dimension delta。比 `"direct"` 多一层「评价变量」语义，调参更细、可解释性更高。
+  - `"occ_heuristic"` — OCC + 6 个纯函数启发式，零 LLM，基于文本特征 / 群状态 / 用户关系微调（详见下表）。
+
+- **AppraisalContext 启发式**（仅 `occ_heuristic` 启用）：
+  - 文本标点 / 字符重复 → 提高 arousal
+  - 正向/负向 emoji → 调整 desirability / undesirability
+  - 用户信任度 → 朋友夸更重、吵架用户夸打折
+  - 群紧张水平 → 所有 appraisal 放大/缩小
+  - 同类信号短期重复 → 习惯化（habituation）
+  - 被 @ 触发 → arousal +0.10，expectedness ×0.5
+
+- **"direct" 模式向后兼容校验**：全部 15 个 CP2 集成测试通过。`DirectEstimator` 与 v0.4.0 的 `GROUP_SIGNAL_WEIGHTS` / `RELATION_SIGNAL_WEIGHTS` 返回值 bit-identical。
+
+- **新增公开 API**（通过 `main.py` 暴露给其他插件）：
+  - `set_appraisal_mode(mode)` — 运行时切换 estimator，立刻生效
+
+- **JSON v3 序列化**：`to_dict` 版本升至 3，多字段 `appraisal_mode` + `recent_signals`。v2 JSON 自动以 `"direct"` 模式加载，完全向后兼容。
+
+- **配置项**：`appraisal_mode`，类型 `string`，可选值 `"direct"` / `"occ_static"` / `"occ_heuristic"`。默认 `"direct"`。
+
+### Changed
+
+- `EmotionStateMachine.__init__` 新增 `appraisal_mode="direct"` 参数。
+- `EmotionStateMachine` 新增 `set_appraisal_mode(mode)` / `_append_recent_signal` / `_build_appraisal_context` 方法。
+- `EmotionEvent` 新增可选字段 `text: str` 和 `mentioned: bool`，供 heuristic estimator 使用。
+- `_render_config_snapshot` 在 `/emotion_state` 输出里新增 `appraisal_mode` 行。
+- 新增子模块 `appraisal_heuristics.py`（6 个纯函数），重写 `appraisal.py`（3 个 estimator + 工厂）。
+
+### Fixed
+
+- `_desirability_from_emoji` 的 base=0 导致负 emoji 方向丢失的 bug（修复后正/负 emoji 都能正确双向修正 desirability 和 undesirability）。
+
 ## v0.4.0 - 2026-06-24
 
 ### Changed

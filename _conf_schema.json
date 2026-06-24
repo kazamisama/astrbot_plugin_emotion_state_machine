@@ -65,6 +65,13 @@
         "type": "float",
         "default": 0.5
     },
+    "appraisal_mode": {
+        "description": "【v0.5.0】情绪评价模式",
+        "hint": "direct = v0.4.0 直接查表行为（默认）；occ_static = 静态 OCC 评价变量转维度；occ_heuristic = OCC + 启发式（文本特征/群状态/用户关系）。切换到 occ 模式后维度量级与 direct 略有不同但方向一致。",
+        "type": "string",
+        "default": "direct",
+        "choices": ["direct", "occ_static", "occ_heuristic"]
+    },
     "disabled_signals": {
         "description": "【信号过滤】禁用的 signal 列表",
         "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",
