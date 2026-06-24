@@ -65,16 +65,19 @@ def _diag(msg: str) -> None:
         LOG.warning(msg)
     except Exception:
         pass
-    # 4. file in plugin data dir — reliable fallback
-    try:
-        from pathlib import Path
-        data_dir = Path(__file__).parent / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        with open(data_dir / "esm-debug.log", "a", encoding="utf-8") as f:
-            from datetime import datetime
-            f.write(f"{datetime.now().isoformat()} {line}\n")
-    except Exception:
-        pass
+    # 4. file at a fixed absolute path — the most reliable fallback
+    #    (no try/except so the exception surfaces in the AstrBot console
+    #    if writing fails)
+    import os as _os
+    _log_path = _os.path.join(
+        _os.path.expanduser("~"), ".astrbot", "esm-debug.log"
+    )
+    _log_dir = _os.path.dirname(_log_path)
+    if not _os.path.isdir(_log_dir):
+        _os.makedirs(_log_dir, exist_ok=True)
+    with open(_log_path, "a", encoding="utf-8") as f:
+        from datetime import datetime as _dt
+        f.write(f"{_dt.now().isoformat()} {line}\n")
 
 
 def _resolve_register(plugin) -> tuple[Any, str] | None:
