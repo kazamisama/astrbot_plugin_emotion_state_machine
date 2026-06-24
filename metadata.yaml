@@ -2,7 +2,7 @@ name: astrbot_plugin_emotion_state_machine
 display_name: Emotion State Machine 情绪状态机
 desc: 模拟 BOT 的情绪状态机，维护可衰减的情绪维度，并可在 LLM 请求前注入低噪声情绪摘要。
 help: 使用 /emotion_state 查看当前状态；/emotion_signal <signal> [intensity] 手动施加事件；/emotion_prompt 预览注入内容；管理员可用 /emotion_reset 重置。
-version: v0.8.13
+version: v0.8.14
 author: chiriu & 橘雪莉
 # repo field removed (v0.8.2) — AstrBot Dashboard fetches GitHub repo
 # metadata from cloud.astrbot.app/api/v1/github/repo-info, which currently

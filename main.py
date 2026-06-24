@@ -787,6 +787,31 @@ class EmotionStateMachineStar(Star):
         try:
             self._page_api = PluginPageApi(self)
             self._page_api.register_routes()
+            # v0.8.14: dump the global registered_web_apis list so we can
+            # see whether our 3 routes actually landed.
+            try:
+                apis = self.context.registered_web_apis
+                ours = [
+                    r for r in apis
+                    if r[0].startswith(f"/{PLUGIN_NAME}/")
+                ] if False else [r for r in apis if PLUGIN_NAME in (r[0] or "")]
+                print(
+                    f"[emotion_state_machine] page_api registered OK. "
+                    f"total_apis={len(apis)}, "
+                    f"our_routes={len(ours)}: "
+                    f"{[r[0] for r in ours]}"
+                )
+                if not ours:
+                    print(
+                        f"[emotion_state_machine] WARNING: our 3 routes are "
+                        f"MISSING from registered_web_apis. The list contains: "
+                        f"{[r[0] for r in apis[:20]]}"
+                    )
+            except Exception as diag_e:
+                print(
+                    f"[emotion_state_machine] post-register dump failed: "
+                    f"{diag_e!r}"
+                )
         except Exception as e:
             self._page_api = None
             print(f"[emotion_state_machine] page_api register failed: {e!r}")
