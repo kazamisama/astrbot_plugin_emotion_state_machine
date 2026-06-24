@@ -93,8 +93,13 @@ def _inject_emotion_block(system_prompt: str, block: str) -> str:
     return result.rstrip() + "\n"
 
 
-class EmotionStateMachinePlugin(Star):
-    """Simulate bot emotion state per conversation scope."""
+class EmotionStateMachineStar(Star):
+    """Simulate bot emotion state per conversation scope.
+
+    Class name uses the ``<Name>Star`` convention matching engram-core
+    (HippocampusStar) — the Dashboard's WebUI page route discovery
+    in v4.25.x appears to key off this suffix.
+    """
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -839,3 +844,7 @@ class EmotionStateMachinePlugin(Star):
         external monitoring tools or custom dashboards.
         """
         return render_state_json(self.machine)
+
+
+# Back-compat alias for v0.8.13 rename.
+EmotionStateMachinePlugin = EmotionStateMachineStar
