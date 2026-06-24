@@ -2,7 +2,18 @@
 
 ## Unreleased
 
-> 下一个版本的待发布变更。
+## v0.7.0 - 2026-06-24
+
+### Added
+
+- **WebUI 仪表板**。自包含 HTML 单页应用（无 CDN，无 npm），按群聊 scope 切换查看 group 情绪 + 用户关系。CSS bar chart + PAD 徽章 + 用户搜索过滤 + 15s 自动刷新。
+- 路由 `/esm/` + `/esm/api/state`；公开 API `get_webui_page()` / `get_state_json()` / `register_web_routes(router)`。
+- 新模块 `api.py`（`get_full_state`）+ `webui.py`（页面生成）。
+- 命令 `/emotion_web`。
+
+### Changed
+
+- `main.py` 新增 web 路由注册和公开 WebUI 方法。
 
 ## v0.6.0 - 2026-06-24
 

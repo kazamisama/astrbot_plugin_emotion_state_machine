@@ -35,6 +35,8 @@ try:
         normalize_user_id,
         signal_names,
     )
+    from .emotion_engine.api import get_full_state
+    from .emotion_engine.webui import render_webui_page, render_state_json
 except ImportError:  # pragma: no cover - allow direct script imports in tests
     from emotion_engine import (
         ESM_BLOCK_END,
@@ -45,11 +47,14 @@ except ImportError:  # pragma: no cover - allow direct script imports in tests
         GroupEmotionSnapshot,
         UserRelationSnapshot,
         build_prompt_block,
+        format_combined_chart,
         format_combined_view,
         normalize_scope,
         normalize_user_id,
         signal_names,
     )
+    from emotion_engine.api import get_full_state
+    from emotion_engine.webui import render_webui_page, render_state_json
 
 
 # Compiled once at module load — the sentinels are static, so the
@@ -451,6 +456,23 @@ class EmotionStateMachinePlugin(Star):
         view = self.machine.get_combined(scope, user_id)
         event.set_result(event.plain_result(format_combined_chart(view)))
 
+    @filter.command("emotion_web")
+    async def emotion_web(self, event: AstrMessageEvent):
+        """Serve the WebUI state as a prompt link.
+
+        The WebUI is a self-contained HTML page. In most AstrBot
+        deployments this is served at ``/esm/``. If your deployment
+        doesn't host a web server, the state JSON can be obtained
+        via ``/esm/api/state`` or by calling ``get_full_state()``
+        via the public API.
+        """
+        event.set_result(
+            event.plain_result(
+                "🧭 ESM WebUI: 请访问 AstrBot 管理面板的插件 WebUI 页面。\n"
+                "如果未配置 Web 路由，可使用 /emotion_state 或 /emotion_chart 查看文字版。"
+            )
+        )
+
     @filter.command("emotion_prompt")
     async def emotion_prompt(self, event: AstrMessageEvent):
         """Preview the prompt block that would be injected."""
@@ -740,3 +762,54 @@ class EmotionStateMachinePlugin(Star):
 
     async def terminate(self):
         self._save_state(force=True)
+
+    # ------------------------------------------------------------------
+    # WebUI (v0.7.0+)
+    # ------------------------------------------------------------------
+
+    def register_web_routes(self, router) -> None:
+        """Register ESM WebUI routes on the AstrBot web router.
+
+        Expected to be called once during plugin initialization (after
+        the web server is ready). ``router`` should expose
+        ``.get(path, handler)`` and ``.add_static(...)``.
+        Two routes are registered:
+
+        - ``GET /esm/`` — serves a self-contained HTML dashboard.
+        - ``GET /esm/api/state`` — returns the full emotion state as
+          a compact JSON response.
+        """
+        plugin = self
+
+        async def _page(_request):
+            from astrbot.api.web import HTMLResponse
+            return HTMLResponse(render_webui_page())
+
+        async def _api_state(_request):
+            from astrbot.api.web import JSONResponse
+            return JSONResponse(json.loads(render_state_json(plugin.machine)))
+
+        try:
+            router.get("/esm/", _page)
+            router.get("/esm/api/state", _api_state)
+        except Exception as exc:
+            logger.warning(
+                f"[emotion_state_machine] failed to register web routes: {exc}"
+            )
+
+    def get_webui_page(self) -> str:
+        """Return the complete WebUI as an HTML string.
+
+        Can be served directly by any web framework. Use this in
+        custom deployments where AstrBot's built-in router is not
+        available.
+        """
+        return render_webui_page()
+
+    def get_state_json(self) -> str:
+        """Return the full emotion state as a compact JSON string.
+
+        One-shot dump of all groups + relations. Suitable for
+        external monitoring tools or custom dashboards.
+        """
+        return render_state_json(self.machine)
