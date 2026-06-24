@@ -113,14 +113,29 @@ class PluginPageApi:
             ("/state/<scope>", self._scope_detail, ["GET"],
              "ESM single scope detail"),
         ]
-        prefix_variants = [PAGE_API_PREFIX, "/page"]
+        # Brute-force: register every plausible path shape so the
+        # bridge can find us regardless of which prefix style the
+        # user's AstrBot version uses. Each is a separate (route,
+        # handler, methods) entry in `registered_web_apis`; the
+        # Werkzeug match function in `dashboard/server.py` tries
+        # them in order.
+        prefix_variants = [
+            PAGE_API_PREFIX,                # /<plugin_name>/page/<x>
+            "/page",                        # /page/<x>
+            f"/{PLUGIN_NAME}",             # /<plugin_name>/<x>  (no /page)
+            "",                             # /<x>  (bare)
+        ]
         ok_count = 0
+        registered_paths = []
         for sub_path, handler, methods, desc in handlers:
             for prefix in prefix_variants:
                 full_path = prefix + sub_path
+                if full_path in registered_paths:
+                    continue
                 try:
                     register(full_path, handler, methods, desc)
                     _diag(f"register_routes:   OK  {full_path} {methods}")
+                    registered_paths.append(full_path)
                     ok_count += 1
                 except Exception as exc:
                     _diag(
