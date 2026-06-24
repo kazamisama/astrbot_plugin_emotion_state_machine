@@ -39,20 +39,40 @@ PAGE_API_PREFIX = f"/{PLUGIN_NAME}/page"
 
 
 def _diag(msg: str) -> None:
-    """Diagnostic print. Bypasses AstrBot logger entirely.
+    """Diagnostic write. Tries: print → stderr → AstrBot logger → file.
 
-    Prefixed ``[EMT-DBG]`` so operators can grep it out of the console.
-    Also pushes through ``astrbot.api.logger.warning`` for the AstrBot
-    log panel.
+    We use ALL four channels because AstrBot sometimes captures stdout,
+    filters third-party loggers, and otherwise suppresses diagnostic
+    output. The file-based path is the reliable one — write to
+    ``<data_dir>/esm-debug.log`` and operators can tail it directly.
     """
     line = f"[EMT-DBG] {msg}"
+    # 1. stdout
     try:
         print(line, flush=True)
     except Exception:
         pass
+    # 2. stderr
+    try:
+        import sys
+        sys.stderr.write(line + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+    # 3. AstrBot logger (may be filtered)
     try:
         from astrbot.api import logger as LOG
         LOG.warning(msg)
+    except Exception:
+        pass
+    # 4. file in plugin data dir — reliable fallback
+    try:
+        from pathlib import Path
+        data_dir = Path(__file__).parent / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        with open(data_dir / "esm-debug.log", "a", encoding="utf-8") as f:
+            from datetime import datetime
+            f.write(f"{datetime.now().isoformat()} {line}\n")
     except Exception:
         pass
 
