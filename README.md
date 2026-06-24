@@ -8,7 +8,7 @@
 - **分层**：群氛围和用户关系分开，避免某个人的行为直接污染整个群关系。
 - **可解释**：每个状态都有数值维度、离散标签和最近触发信号。
 - **可衰减**：情绪会按半衰期逐步回到基线，避免永久污染。
-- **可复用**：核心逻辑在 `emotion_engine.py`，不依赖 AstrBot，可被其他插件调用或测试。
+- **可复用**：核心逻辑在 `emotion_engine/` 包（9 个子模块，详见 [模块结构](#模块结构)），不依赖 AstrBot，可被其他插件调用或测试。
 
 ## 分层机制
 
@@ -92,6 +92,26 @@ Use this as subtle continuity only. Do not mention numeric scores unless explici
 - 接入 aiocqhttp 戳一戳 notice，将真实戳一戳映射到 `poke` 信号。
 - 支持 LLM judge 对复杂消息做结构化 signal 判定。
 - 增加跨群 user-global 长期关系层。
+
+## 模块结构
+
+`emotion_engine.py` 在 v0.4.0 起拆为 `emotion_engine/` 包，9 个子模块各司其职：
+
+```
+emotion_engine/
+├── __init__.py          # 公共 API 完整重导出（向后兼容）
+├── utils.py             # clamp / normalize_* / prune_active_users
+├── defaults.py          # 所有出厂默认常量（baselines / weights / thresholds / keywords）
+├── state.py             # Snapshot dataclass + EmotionEvent
+├── signals.py           # signal_names() + 权重表重导出
+├── signals_classify.py  # 文本 → signal 推断（关键词 + 疑问句判定）
+├── appraisal.py         # 直接评价模式（apply_weights）
+├── labels.py            # 离散标签派生（derive_*_label）
+├── machine.py           # EmotionStateMachine 编排器
+└── prompt.py            # 提示块 + 哨兵 + 人类可读渲染
+```
+
+新代码建议从子模块精确导入（如 `from emotion_engine.labels import derive_group_label`），老代码的 `from emotion_engine import X` 风格继续可用。
 
 ## Public API for other plugins
 

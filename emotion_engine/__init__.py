@@ -1,0 +1,173 @@
+"""Emotion state engine for ``astrbot_plugin_emotion_state_machine``.
+
+This package is intentionally framework-free — it does not import
+``astrbot.*`` and can be unit-tested in isolation. It models bot
+emotion as a layered state machine:
+
+- **group emotion** — shared conversation atmosphere (valence,
+  arousal, stress, curiosity).
+- **user relation** — bot's private relation toward a specific user
+  (trust, affection, irritation, familiarity).
+- **combined view** — group atmosphere + current sender relation, used
+  for prompt injection and the ``/emotion_state`` command output.
+- **decay** — both layers slowly move back to baseline over time so
+  emotion does not accumulate forever.
+
+Layered architecture (post v0.4.0 refactor):
+
+============================  =========================================
+Module                         Responsibility
+============================  =========================================
+:mod:`.utils`                  Pure helpers: clamp, normalize, prune.
+:mod:`.defaults`               Factory defaults: baselines, weights,
+                               thresholds, keyword sets.
+:mod:`.state`                  Snapshot dataclasses and ``EmotionEvent``.
+:mod:`.signals`                Signal taxonomy (names + per-layer
+                               weights). Re-exports from ``defaults``.
+:mod:`.signals_classify`       Text → signal inference (keyword scan).
+:mod:`.appraisal`              Direct weight-delta application (the
+                               ``appraisal_mode == "direct"`` path).
+:mod:`.labels`                 Discrete label derivation from
+                               continuous dimensions.
+:mod:`.machine`                Orchestrator: ``EmotionStateMachine``.
+:mod:`.prompt`                 Prompt block, formatters, sentinels.
+============================  =========================================
+
+Backward compatibility
+----------------------
+
+Every symbol previously importable from the pre-v0.4.0 monolithic
+``emotion_engine.py`` is re-exported here, so existing
+``from emotion_engine import X`` statements (in tests and in external
+plugins) continue to work without modification. New code should
+prefer importing from the appropriate submodule — for example
+``from emotion_engine.labels import derive_group_label`` — but the
+flat re-export surface is frozen for the foreseeable future.
+"""
+
+from __future__ import annotations
+
+# Re-exports — every name here must remain importable from
+# ``emotion_engine`` for backward compat with the pre-v0.4.0 single-file
+# module. The grouping below mirrors the layout in :data:`__all__`.
+
+# ---- utils --------------------------------------------------------
+from .utils import (
+    _legacy_module_dilution,
+    active_user_dilution,
+    clamp,
+    normalize_scope,
+    normalize_user_id,
+    prune_active_users,
+)
+
+# ---- defaults -----------------------------------------------------
+from .defaults import (
+    GROUP_BASELINE,
+    GROUP_LABEL_THRESHOLDS,
+    GROUP_SIGNAL_WEIGHTS,
+    KEYWORD_SIGNALS,
+    QUESTION_INDICATORS,
+    RELATION_BASELINE,
+    RELATION_LABEL_THRESHOLDS,
+    RELATION_SIGNAL_WEIGHTS,
+    SIGNAL_LAYER_WEIGHTS,
+)
+
+# ---- state --------------------------------------------------------
+from .state import (
+    CombinedEmotionView,
+    EmotionEvent,
+    EmotionSnapshot,
+    GroupEmotionSnapshot,
+    UserRelationSnapshot,
+)
+
+# ---- signals ------------------------------------------------------
+from .signals import signal_names
+
+# ---- signals_classify ---------------------------------------------
+from .signals_classify import (
+    _contains_interrogative,
+    _ends_with_question_mark,
+    dedupe_signals,
+    infer_signals,
+)
+
+# ---- appraisal ----------------------------------------------------
+from .appraisal import apply_weights
+
+# ---- labels -------------------------------------------------------
+from .labels import (
+    _eval_label_condition,
+    derive_combined_label,
+    derive_group_label,
+    derive_label,
+    derive_relation_label,
+)
+
+# ---- machine ------------------------------------------------------
+from .machine import EmotionStateMachine
+
+# ---- prompt -------------------------------------------------------
+from .prompt import (
+    ESM_BLOCK_END,
+    ESM_BLOCK_START,
+    build_prompt_block,
+    format_combined_view,
+    format_relation,
+    format_snapshot,
+    style_hint_for,
+)
+
+
+__all__ = [
+    # utils
+    "clamp",
+    "normalize_scope",
+    "normalize_user_id",
+    "prune_active_users",
+    "active_user_dilution",
+    "_legacy_module_dilution",
+    # defaults
+    "GROUP_BASELINE",
+    "RELATION_BASELINE",
+    "GROUP_SIGNAL_WEIGHTS",
+    "RELATION_SIGNAL_WEIGHTS",
+    "SIGNAL_LAYER_WEIGHTS",
+    "KEYWORD_SIGNALS",
+    "QUESTION_INDICATORS",
+    "GROUP_LABEL_THRESHOLDS",
+    "RELATION_LABEL_THRESHOLDS",
+    # state
+    "EmotionEvent",
+    "GroupEmotionSnapshot",
+    "UserRelationSnapshot",
+    "CombinedEmotionView",
+    "EmotionSnapshot",  # backward-compat alias
+    # signals
+    "signal_names",
+    # signals_classify
+    "_ends_with_question_mark",
+    "_contains_interrogative",
+    "infer_signals",
+    "dedupe_signals",
+    # appraisal
+    "apply_weights",
+    # labels
+    "_eval_label_condition",
+    "derive_group_label",
+    "derive_relation_label",
+    "derive_combined_label",
+    "derive_label",
+    # machine
+    "EmotionStateMachine",
+    # prompt
+    "ESM_BLOCK_START",
+    "ESM_BLOCK_END",
+    "format_snapshot",
+    "format_relation",
+    "format_combined_view",
+    "style_hint_for",
+    "build_prompt_block",
+]

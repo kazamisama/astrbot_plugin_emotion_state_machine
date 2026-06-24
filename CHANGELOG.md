@@ -4,6 +4,33 @@
 
 > 下一个版本的待发布变更。
 
+## v0.4.0 - 2026-06-24
+
+### Changed
+
+- **`emotion_engine.py` 拆为 `emotion_engine/` 包**（P0：文件分层重构）。
+  单文件 902 行拆成 9 个职责单一的子模块，公共 API 完全向后兼容：
+
+  | 子模块 | 职责 |
+  | --- | --- |
+  | `emotion_engine.utils` | `clamp` / `normalize_scope` / `normalize_user_id` / `prune_active_users` / `active_user_dilution` 等纯工具。 |
+  | `emotion_engine.defaults` | 所有出厂默认常量：`GROUP_BASELINE` / `RELATION_BASELINE` / `*_SIGNAL_WEIGHTS` / `SIGNAL_LAYER_WEIGHTS` / `KEYWORD_SIGNALS` / `QUESTION_INDICATORS` / `*_LABEL_THRESHOLDS`。 |
+  | `emotion_engine.state` | `GroupEmotionSnapshot` / `UserRelationSnapshot` / `CombinedEmotionView` / `EmotionEvent` 四个 dataclass，及其 `to_dict` / `from_dict` / `normalize` 方法。 |
+  | `emotion_engine.signals` | `signal_names()` + `*_SIGNAL_WEIGHTS` 重导出。 |
+  | `emotion_engine.signals_classify` | 文本 → signal 推断（`infer_signals` / `dedupe_signals` + 疑问句判定）。 |
+  | `emotion_engine.appraisal` | `apply_weights` —— 直接评价模式（`appraisal_mode == "direct"`）的维度 delta 应用。 |
+  | `emotion_engine.labels` | `derive_group_label` / `derive_relation_label` / `derive_combined_label` / `_eval_label_condition` —— 离散标签派生。 |
+  | `emotion_engine.machine` | `EmotionStateMachine` —— 编排器（get / decay / apply / observe / prune / serialize）。 |
+  | `emotion_engine.prompt` | `build_prompt_block` / `style_hint_for` / `format_*` / `ESM_BLOCK_*` —— 提示块 + 哨兵 + 人类可读渲染。 |
+
+  所有原 `from emotion_engine import X` 导入（包括测试文件和外部插件）继续工作，因为 `emotion_engine/__init__.py` 完整重导出 39 个公共符号。
+
+### Notes
+
+- 这一版**没有任何行为变化**。所有 smoke test（11/11）和 main.py 集成 smoke test（4/4）通过。原有 100+ 单元测试不需要修改一行代码就能继续运行。
+- 分层后下一步可以独立演进每一层（比如 `appraisal.py` 之后会引入 OCC 评价变量层；`signals_classify.py` 之后会支持 `register_classifier(fn)` 钩子）。
+- `defaults.py` 集中管理所有"魔法常量"，调参不再需要进 `machine.py`。
+
 ## v0.3.1 - 2026-06-14
 
 ### Fixed
