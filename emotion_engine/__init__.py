@@ -49,7 +49,7 @@ from __future__ import annotations
 
 # Package version — keep in sync with metadata.yaml.
 # Used by page_api.py for the /health endpoint.
-__version__ = "0.8.11"
+__version__ = "0.8.12"
 
 # Re-exports — every name here must remain importable from
 # ``emotion_engine`` for backward compat with the pre-v0.4.0 single-file

@@ -768,47 +768,23 @@ class EmotionStateMachinePlugin(Star):
         return sorted(self._get_disabled_signals())
 
     def _register_official_page_api_if_available(self) -> None:
-        """Register the Dashboard WebUI page API.
-
-        Uses ``logger.warning`` for diagnostic messages so the operator
-        can SEE whether the registration actually ran, even if AstrBot's
-        logger is configured at WARNING level only.
+        """Register the B9-style web API with the AstrBot Dashboard if
+        the host exposes context.register_web_api. Missing on older
+        AstrBot versions: silently skip. Mirrors the engram pattern.
         """
-        logger.warning(
-            "[emotion_state_machine] _register_official_page_api_if_available: "
-            "ENTRY (context type=%s)",
-            type(self.context).__name__,
-        )
         if not hasattr(self.context, "register_web_api"):
-            logger.warning(
-                "[emotion_state_machine] context has NO register_web_api — "
-                "Dashboard WebUI unavailable on this AstrBot version"
-            )
             return
-        logger.warning(
-            "[emotion_state_machine] context.register_web_api found, "
-            "proceeding to register routes"
-        )
         try:
             from page_api import PluginPageApi
-        except Exception as exc:
-            logger.warning(
-                f"[emotion_state_machine] page_api import failed: {exc!r}"
-            )
+        except Exception as e:
+            print(f"[emotion_state_machine] page_api import failed: {e!r}")
             return
         try:
             self._page_api = PluginPageApi(self)
             self._page_api.register_routes()
-            logger.warning(
-                "[emotion_state_machine] Dashboard page API register_routes() "
-                "completed"
-            )
-        except Exception as exc:
+        except Exception as e:
             self._page_api = None
-            logger.warning(
-                f"[emotion_state_machine] page_api register_routes() THREW: "
-                f"{type(exc).__name__}: {exc!r}"
-            )
+            print(f"[emotion_state_machine] page_api register failed: {e!r}")
 
     async def terminate(self):
         self._save_state(force=True)
