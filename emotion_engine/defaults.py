@@ -79,6 +79,87 @@ SIGNAL_LAYER_WEIGHTS: dict[str, tuple[float, float]] = {
     "failure": (0.55, 0.45),
 }
 
+
+# ----------------------------------------------------------------------------
+# OCC appraisal layer (v0.5.0+)
+# ----------------------------------------------------------------------------
+#
+# OCC = Ortony, Clore & Collins (1988), "The Cognitive Structure of Emotions".
+# Three tables below decompose a signal into a per-call *appraisal profile*,
+# then a per-layer *appraisal→dimension* mapping translates that profile into
+# snapshot deltas. Compared to the legacy ``*_SIGNAL_WEIGHTS`` (which collapsed
+# both steps into one), this separation makes tuning more composable:
+# "what does praiseworthiness do to the bot's state" is now answerable by
+# editing ``APPRAISAL_TO_DIMENSION_*`` once, and any new signal that
+# uses praiseworthiness picks up the change automatically.
+#
+# Canonical appraisal variables used here:
+#   - praiseworthiness:   the action is morally good       → +valence, -stress
+#   - blameworthiness:    the action is morally bad        → -valence, +stress, +arousal
+#   - desirability:       the outcome is good              → +valence
+#   - undesirability:     the outcome is bad               → -valence, +stress
+#   - arousal:            intrinsic activation of the event → +arousal
+#   - expectedness:       the event was predictable        → +arousal, -curiosity
+#   - novelty:            the event is novel / curious     → +curiosity, +arousal
+#   - goal_conduciveness: the event helps bot's goals      → +curiosity, +valence
+#   - suppress_arousal:   the event quiets the room        → -arousal
+#   - suppress_novelty:   the event removes curiosity      → -curiosity
+#
+# Profile values are 0.0–1.0 (positive = "how much of this appraisal does
+# this signal carry"). Multipliers in the mapping tables are per-unit
+# deltas, chosen so the resulting dimension changes are in the same order
+# of magnitude as the legacy direct weights.
+
+
+SIGNAL_APPRAISAL_PROFILES: dict[str, dict[str, float]] = {
+    "praise":    {"praiseworthiness": 0.80, "desirability": 0.70, "arousal": 0.40},
+    "thanks":    {"praiseworthiness": 0.60, "desirability": 0.60, "arousal": 0.20},
+    "friendly":  {"praiseworthiness": 0.40, "desirability": 0.50, "arousal": 0.20},
+    "mention":   {"arousal": 0.50, "novelty": 0.40},
+    "poke":      {"arousal": 0.80, "novelty": 0.30, "desirability": 0.20},
+    "technical": {"novelty": 0.80, "goal_conduciveness": 0.50, "arousal": 0.30},
+    "question":  {"novelty": 0.60, "arousal": 0.20, "expectedness": 0.20},
+    "comfort":   {"praiseworthiness": 0.70, "desirability": 0.50, "goal_conduciveness": 0.50, "arousal": 0.20},
+    "insult":    {"blameworthiness": 0.80, "undesirability": 0.70, "arousal": 0.60},
+    "pressure":  {"undesirability": 0.60, "blameworthiness": 0.30, "arousal": 0.50, "expectedness": 0.30},
+    "silence":   {"suppress_arousal": 0.40, "suppress_novelty": 0.30},
+    "success":   {"desirability": 0.70, "arousal": 0.40, "praiseworthiness": 0.40},
+    "failure":   {"undesirability": 0.60, "arousal": 0.30, "novelty": 0.40},
+}
+
+
+APPRAISAL_TO_DIMENSION_GROUP: dict[str, dict[str, float]] = {
+    "praiseworthiness":   {"valence": +0.10, "stress": -0.04},
+    "blameworthiness":    {"valence": -0.13, "stress": +0.11, "arousal": +0.06},
+    "desirability":       {"valence": +0.10},
+    "undesirability":     {"valence": -0.08, "stress": +0.08, "arousal": +0.02},
+    "arousal":            {"arousal": +0.10},
+    "expectedness":       {"arousal": +0.02, "curiosity": -0.03},
+    "novelty":            {"curiosity": +0.12, "arousal": +0.04},
+    "goal_conduciveness": {"curiosity": +0.10, "valence": +0.05},
+    "suppress_arousal":   {"arousal": -0.10},
+    "suppress_novelty":   {"curiosity": -0.10},
+}
+
+
+APPRAISAL_TO_DIMENSION_RELATION: dict[str, dict[str, float]] = {
+    "praiseworthiness":   {"trust": +0.04, "affection": +0.06, "irritation": -0.03, "familiarity": +0.02},
+    "blameworthiness":    {"trust": -0.07, "affection": -0.04, "irritation": +0.12, "familiarity": +0.01},
+    "desirability":       {"affection": +0.05, "familiarity": +0.02},
+    "undesirability":     {"trust": -0.04, "irritation": +0.08, "familiarity": +0.01},
+    "arousal":            {"familiarity": +0.02},
+    "expectedness":       {},
+    "novelty":            {"familiarity": +0.02},
+    "goal_conduciveness": {"trust": +0.03, "affection": +0.02},
+    "suppress_arousal":   {},
+    "suppress_novelty":   {},
+}
+
+
+# Valid appraisal_mode values. Used by ``get_estimator`` for validation
+# and by the schema/help text in ``_conf_schema.json``.
+APPRAISAL_MODES: tuple[str, ...] = ("direct", "occ_static", "occ_heuristic")
+
 KEYWORD_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("praise", ("好厉害", "厉害", "靠谱", "天才", "做得好", "不错", "优秀")),
     ("thanks", ("谢谢", "谢了", "感谢", "辛苦", "帮大忙")),

@@ -42,12 +42,21 @@ from .utils import clamp
 
 @dataclass(frozen=True)
 class EmotionEvent:
-    """Input event consumed by the state machine."""
+    """Input event consumed by the state machine.
+
+    ``text`` and ``mentioned`` are optional context used only by the
+    :class:`~emotion_engine.OCCHeuristicEstimator` — direct and
+    occ_static estimators ignore them. They default to empty / False
+    so existing callers (and persisted JSON from v0.4.0) continue to
+    work unchanged.
+    """
 
     signal: str
     intensity: float = 1.0
     reason: str = ""
     timestamp: float = field(default_factory=time.time)
+    text: str = ""
+    mentioned: bool = False
 
 
 @dataclass

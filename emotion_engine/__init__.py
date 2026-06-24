@@ -63,6 +63,9 @@ from .utils import (
 
 # ---- defaults -----------------------------------------------------
 from .defaults import (
+    APPRAISAL_MODES,
+    APPRAISAL_TO_DIMENSION_GROUP,
+    APPRAISAL_TO_DIMENSION_RELATION,
     GROUP_BASELINE,
     GROUP_LABEL_THRESHOLDS,
     GROUP_SIGNAL_WEIGHTS,
@@ -71,6 +74,7 @@ from .defaults import (
     RELATION_BASELINE,
     RELATION_LABEL_THRESHOLDS,
     RELATION_SIGNAL_WEIGHTS,
+    SIGNAL_APPRAISAL_PROFILES,
     SIGNAL_LAYER_WEIGHTS,
 )
 
@@ -95,7 +99,15 @@ from .signals_classify import (
 )
 
 # ---- appraisal ----------------------------------------------------
-from .appraisal import apply_weights
+from .appraisal import (
+    AppraisalEstimator,
+    DirectEstimator,
+    OCCHeuristicEstimator,
+    OCCStaticEstimator,
+    apply_weights,
+    get_estimator,
+)
+from .appraisal_heuristics import AppraisalContext, estimate_appraisal
 
 # ---- labels -------------------------------------------------------
 from .labels import (
@@ -139,6 +151,10 @@ __all__ = [
     "QUESTION_INDICATORS",
     "GROUP_LABEL_THRESHOLDS",
     "RELATION_LABEL_THRESHOLDS",
+    "SIGNAL_APPRAISAL_PROFILES",
+    "APPRAISAL_TO_DIMENSION_GROUP",
+    "APPRAISAL_TO_DIMENSION_RELATION",
+    "APPRAISAL_MODES",
     # state
     "EmotionEvent",
     "GroupEmotionSnapshot",
@@ -154,6 +170,13 @@ __all__ = [
     "dedupe_signals",
     # appraisal
     "apply_weights",
+    "AppraisalEstimator",
+    "DirectEstimator",
+    "OCCStaticEstimator",
+    "OCCHeuristicEstimator",
+    "get_estimator",
+    "AppraisalContext",
+    "estimate_appraisal",
     # labels
     "_eval_label_condition",
     "derive_group_label",
