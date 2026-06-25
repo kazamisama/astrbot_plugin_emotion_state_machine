@@ -799,6 +799,7 @@ class EmotionStateMachineStar(Star):
                 "scope_count": len(machine.groups),
                 "hidden_user_ids": hidden_users,
                 "hidden_scope_patterns": hidden_scopes,
+                "active_window_seconds": machine.active_window_seconds,
             }
 
         async def full_state():

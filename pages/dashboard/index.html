@@ -95,14 +95,53 @@
   body.opt-hide-version #last-update,
   body.opt-hide-version .footer { display: none; }
   body.opt-hide-version .topbar { padding-bottom: 0; }
+  /* v0.9.11: tighter compact mode */
+  body.opt-compact { font-size: 12px; }
+  body.opt-compact .content { font-size: 12px; padding-bottom: 30px; }
+  body.opt-compact .topbar { padding: 14px 0 10px; }
+  body.opt-compact .brand-mark { width: 32px; height: 32px; border-radius: 8px; }
+  body.opt-compact .brand-mark svg { width: 16px; height: 16px; }
+  body.opt-compact .brand-text h1 { font-size: 0.95rem; }
+  body.opt-compact .brand-text p { font-size: 0.7rem; }
+  body.opt-compact .status-chip { padding: 3px 10px; font-size: 0.7rem; }
+  body.opt-compact .icon-btn { width: 30px; height: 30px; border-radius: 8px; }
+  body.opt-compact .icon-btn svg { width: 14px; height: 14px; }
+  body.opt-compact .topbar-right { gap: 8px; }
+  body.opt-compact .hero { gap: 12px; margin-bottom: 16px; }
+  body.opt-compact .hero-mood { padding: 16px 20px; gap: 14px 18px; }
+  body.opt-compact .mood-orb { width: 56px; height: 56px; }
+  body.opt-compact .mood-emoji { font-size: 30px; }
+  body.opt-compact .mood-label { font-size: 1.15rem; }
+  body.opt-compact .mood-desc { font-size: 0.75rem; }
+  body.opt-compact .pad-row { gap: 6px; }
+  body.opt-compact .pad-track { height: 6px; }
+  body.opt-compact .pad-label { font-size: 0.7rem; }
+  body.opt-compact .pad-val { font-size: 0.7rem; width: 30px; }
+  body.opt-compact .side-stat { padding: 8px 14px; }
+  body.opt-compact .side-stat-num { font-size: 1.15rem; }
+  body.opt-compact .side-stat-label { font-size: 0.65rem; }
+  body.opt-compact .stat-grid { gap: 10px; margin-bottom: 18px; }
+  body.opt-compact .stat-card { padding: 12px 14px; }
+  body.opt-compact .stat-icon { width: 28px; height: 28px; border-radius: 8px; }
+  body.opt-compact .stat-icon svg { width: 16px; height: 16px; }
+  body.opt-compact .stat-value { font-size: 1.1rem; }
+  body.opt-compact .stat-label { font-size: 0.65rem; }
+  body.opt-compact .section { margin-bottom: 18px; }
+  body.opt-compact .section-head { margin-bottom: 10px; }
+  body.opt-compact .section-head h2 { font-size: 0.9rem; }
+  body.opt-compact .input, body.opt-compact .select { padding: 5px 10px; font-size: 0.75rem; }
+  body.opt-compact .groups-grid { gap: 10px; }
   body.opt-compact .group-card { padding: 12px 14px; }
-  body.opt-compact .hero-mood { padding: 18px 22px; }
-  body.opt-compact .mood-orb { width: 72px; height: 72px; }
-  body.opt-compact .mood-emoji { font-size: 38px; }
-  body.opt-compact .mood-label { font-size: 1.25rem; }
-  body.opt-compact .stat-value { font-size: 1.15rem; }
-  body.opt-compact .stat-icon { width: 32px; height: 32px; }
-  body.opt-compact .content { font-size: 13px; }
+  body.opt-compact .group-name { font-size: 0.8rem; }
+  body.opt-compact .label-badge { padding: 2px 8px; font-size: 0.65rem; }
+  body.opt-compact .dim-row { margin: 3px 0; gap: 5px; }
+  body.opt-compact .dim-label { font-size: 0.65rem; width: 36px; }
+  body.opt-compact .dim-bar-bg { height: 4px; }
+  body.opt-compact .dim-val { font-size: 0.65rem; width: 28px; }
+  body.opt-compact .group-meta { margin-top: 8px; padding-top: 8px; font-size: 0.65rem; }
+  body.opt-compact .users-row { padding: 6px 10px; font-size: 0.7rem; }
+  body.opt-compact .users-row.head { font-size: 0.6rem; }
+  body.opt-compact .footer { padding: 10px 0 4px; font-size: 0.65rem; }
   .hero { display: grid; grid-template-columns: 1.7fr 1fr; gap: 18px; margin-bottom: 24px; }
   .hero-mood { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px 32px; display: grid; grid-template-columns: auto 1fr; gap: 24px 28px; box-shadow: var(--shadow-2); position: relative; overflow: hidden; }
   .mood-orb { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, #c7d2fe 0%, #e9d5ff 100%); box-shadow: 0 8px 28px rgba(99, 102, 241, 0.25); grid-row: 1 / span 2; }

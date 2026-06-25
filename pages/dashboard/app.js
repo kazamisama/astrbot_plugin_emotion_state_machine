@@ -325,6 +325,9 @@
       if (h && Array.isArray(h.hidden_scope_patterns) && h.hidden_scope_patterns.length) {
         hiddenScopePatterns = h.hidden_scope_patterns;
       }
+      if (h && h.active_window_seconds) {
+        activeWindowSeconds = h.active_window_seconds;
+      }
       state = await apiGet("state");
       setStatus("ok", "已连接");
       renderStats(h, state);
@@ -333,7 +336,8 @@
       renderGroups();
       showUserTable();
       var upd = document.getElementById("last-update");
-      if (upd) upd.textContent = "更新于 " + new Date().toLocaleTimeString();
+      if (upd) upd.textContent = "更新于 " + new Date().toLocaleTimeString() +
+        " · 活跃窗口 " + Math.round(activeWindowSeconds / 60) + " 分钟";
     } catch (e) {
       setError(e.message || String(e));
     }
@@ -380,6 +384,7 @@
   };
   var hiddenUserIds = ["webchat"];  // populated from /health
   var hiddenScopePatterns = ["webchat:"];  // populated from /health
+  var activeWindowSeconds = 300;  // populated from /health (用于「活跃」判断)
   function loadSettings() {
     try {
       var raw = localStorage.getItem(SETTINGS_KEY);
