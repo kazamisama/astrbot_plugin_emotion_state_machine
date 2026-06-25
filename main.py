@@ -244,30 +244,70 @@ class EmotionStateMachineStar(Star):
             return Path(configured)
         return self.data_dir / "emotion_state.json"
 
-    def _migrate_scope_ids_if_needed(self) -> None:
-        """v0.9.23 / v0.9.24: migrate pre-v0.9.22 scope_ids that have
-        no persona stamp, appending the current bot persona name.
+    def _known_persona_ids(self) -> set[str]:
+        """v0.9.28: all persona IDs registered in AstrBot."""
+        try:
+            pm = getattr(self.context, "persona_manager", None)
+            personas = getattr(pm, "personas_v3", []) or []
+            return {
+                str(p["name"])
+                for p in personas
+                if isinstance(p, dict) and p.get("name")
+            }
+        except Exception:
+            return set()
 
-        Pre-v0.9.22 default ``persona_stamp`` was empty string, so old
-        scope_ids looked like ``webchat:GroupMessageSession`` (no
-        stamp). With v0.9.24 we now read the bot's persona from
-        AstrBot's persona_manager, so the migration uses that name.
+    def _migrate_scope_ids_if_needed(self) -> None:
+        """v0.9.23 / v0.9.28: migrate scope_ids so every scope has
+        exactly one persona stamp suffix.
+
+        Rules:
+        - If scope ends with a known persona ID (any of: ``sherry``,
+          ``mortis``, etc.), DO NOT touch it.
+        - If scope ends with the configured stamp (``_bot_persona_name()``),
+          skip.
+        - Otherwise (scope has NO stamp), append the configured stamp.
+        - v0.9.28 also cleans up DOUBLE stamps that earlier versions
+          accidentally created (``...:sherri:mortis`` → ``...:sherri``).
         """
         stamp = self._bot_persona_name()
         if not stamp:
-            return  # user explicitly disabled isolation; leave scope_ids alone
+            return
+        known = self._known_persona_ids() | {stamp}
         machine = self.machine
         renamed = 0
-        old_groups = list(machine.groups.items())
-        for scope_id, snap in old_groups:
-            # Skip if already ends with the configured stamp
-            if scope_id.endswith(":" + stamp):
-                continue
+        cleaned = 0
+
+        for scope_id in list(machine.groups.keys()):
+            parts = scope_id.split(":")
+            last = parts[-1] if parts else ""
+
+            # Strip trailing ":sherri:mortis"-style double stamps.
+            # If the last two segments are both known persona IDs,
+            # drop the trailing one and keep the inner.
+            if (
+                len(parts) >= 2
+                and parts[-1] in known
+                and parts[-2] in known
+            ):
+                new_id = ":".join(parts[:-1])
+                machine.groups[new_id] = machine.groups.pop(scope_id)
+                if scope_id in machine.relations:
+                    machine.relations[new_id] = machine.relations.pop(scope_id)
+                logger.warning(
+                    f"[emotion_state_machine] dedup persona stamp: "
+                    f"{scope_id!r} -> {new_id!r}"
+                )
+                scope_id = new_id
+                cleaned += 1
+
+            # Now decide whether to append the configured stamp.
+            last = scope_id.split(":")[-1]
+            if last in known:
+                continue  # already has a (valid) stamp
+
             new_id = scope_id + ":" + stamp
-            # Move group snapshot
-            machine.groups[new_id] = snap
-            del machine.groups[scope_id]
-            # Move relations bucket
+            machine.groups[new_id] = machine.groups.pop(scope_id)
             if scope_id in machine.relations:
                 machine.relations[new_id] = machine.relations.pop(scope_id)
             renamed += 1
@@ -275,11 +315,12 @@ class EmotionStateMachineStar(Star):
                 f"[emotion_state_machine] migrated scope "
                 f"{scope_id!r} -> {new_id!r}"
             )
-        if renamed:
+
+        if renamed or cleaned:
             self._save_state(force=True)
             logger.warning(
-                f"[emotion_state_machine] scope_id migration complete: "
-                f"{renamed} scope(s) renamed"
+                f"[emotion_state_machine] scope_id migration: "
+                f"{renamed} appended stamp, {cleaned} deduped double-stamps"
             )
 
     
