@@ -284,29 +284,67 @@ class EmotionStateMachineStar(Star):
 
     
     def _bot_persona_name(self) -> str:
-        """v0.9.24: get the bot's currently-active persona name from
-        AstrBot's persona manager. Returns the configured
-        ``provider_settings.default_personality`` (e.g. "default",
-        "shirley", "alice"), or the ``persona_stamp`` config as a
-        fallback for backward compat.
+        """v0.9.24: sync fallback — get the bot's globally-configured
+        default persona name from AstrBot's persona manager, or the
+        ``persona_stamp`` config as last-resort fallback.
         """
         try:
             pm = getattr(self.context, "persona_manager", None)
             if pm is not None:
-                # `default_persona` is the persona NAME (string),
-                # not the persona object — exactly what we want for
-                # the WebUI's persona dropdown.
                 name = getattr(pm, "default_persona", None)
                 if isinstance(name, str) and name:
                     return name
         except Exception:
             pass
-        # Fallback: persona_stamp config (or "default")
         return self._cfg_str("persona_stamp", "default")
 
-    def _scope_id(self, event: AstrMessageEvent) -> str:
+    async def _resolve_event_persona(self, event: AstrMessageEvent) -> str:
+        """v0.9.25: per-conversation persona lookup via the official
+        AstrBot API ``persona_manager.resolve_selected_persona``.
+
+        This honours the persona selected for the current
+        ``unified_msg_origin`` (session-level), falling back to the
+        conversation's stored persona, then the global default
+        (provider_settings.default_personality), then the legacy
+        ``persona_stamp`` config, then the literal string "default".
+        """
+        try:
+            umo = event.unified_msg_origin
+            pm = getattr(self.context, "persona_manager", None)
+            if pm and umo:
+                # Try to pull a per-conversation persona_id from the
+                # event (AstrBot >= 4.16 attaches it).
+                conv_persona = None
+                conv = getattr(event, "conversation", None)
+                if conv is not None:
+                    conv_persona = getattr(conv, "persona_id", None)
+                if conv_persona is None:
+                    conv_persona = getattr(event, "persona_id", None)
+                platform = None
+                if hasattr(event, "get_platform_name"):
+                    try:
+                        platform = event.get_platform_name()
+                    except Exception:
+                        platform = None
+                persona_id, _persona, _force, _use_webchat = (
+                    await pm.resolve_selected_persona(
+                        umo=umo,
+                        conversation_persona_id=conv_persona,
+                        platform_name=platform or "",
+                    )
+                )
+                if isinstance(persona_id, str) and persona_id:
+                    return persona_id
+        except Exception as exc:
+            logger.warning(
+                f"[emotion_state_machine] persona lookup failed, "
+                f"falling back to default: {exc!r}"
+            )
+        return self._bot_persona_name()
+
+    async def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
-        stamp = self._bot_persona_name()
+        stamp = await self._resolve_event_persona(event)
         return f"{base}:{stamp}" if stamp else base
 
     def _load_state(self) -> None:
@@ -371,7 +409,7 @@ class EmotionStateMachineStar(Star):
         if str(event.get_sender_id()) == str(event.get_self_id()):
             return
 
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id())
         mentioned = bool(getattr(event, "is_at_or_wake_command", False))
         # Filter the engine's inferred signals against the disabled list
@@ -404,7 +442,7 @@ class EmotionStateMachineStar(Star):
         if self._cfg_bool("only_group", True) and not event.get_group_id():
             return
 
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         block = build_prompt_block(scope, view)
@@ -457,7 +495,7 @@ class EmotionStateMachineStar(Star):
         bottom so admins can verify live values without opening the
         config file.
         """
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         text = format_combined_view(view) + "\n\n" + self._render_config_snapshot()
@@ -501,7 +539,7 @@ class EmotionStateMachineStar(Star):
                 event.set_result(event.plain_result("intensity 需要是数字，例如 0.5、1、1.5"))
                 return
 
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.apply_interaction(
             scope,
@@ -515,7 +553,7 @@ class EmotionStateMachineStar(Star):
     @filter.command("emotion_reset")
     async def emotion_reset(self, event: AstrMessageEvent):
         """Reset current conversation emotion state."""
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         self.machine.reset(scope)
         view = self.machine.get_combined(scope, user_id, apply_decay=False)
@@ -529,7 +567,7 @@ class EmotionStateMachineStar(Star):
         Same data as `/emotion_state`, presented as a horizontal bar
         chart with PAD (Pleasure-Arousal-Dominance) alignment.
         """
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         event.set_result(event.plain_result(format_combined_chart(view)))
@@ -554,7 +592,7 @@ class EmotionStateMachineStar(Star):
     @filter.command("emotion_prompt")
     async def emotion_prompt(self, event: AstrMessageEvent):
         """Preview the prompt block that would be injected."""
-        scope = self._scope_id(event)
+        scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         event.set_result(event.plain_result(build_prompt_block(scope, view)))
