@@ -405,36 +405,28 @@
     showUserTable();
   }
 
-  // v0.9.36: simplified DOM confirm modal (window.confirm is
-  // suppressed by AstrBot's sandboxed iframe)
-  function showConfirmModal(message, onYes) {
-    var overlay = document.createElement("div");
-    overlay.className = "confirm-overlay";
-    overlay.innerHTML = '<div class="confirm-box danger"><div class="confirm-msg">' + esc(message) + '</div><div class="confirm-actions"><button class="confirm-btn confirm-no">取消</button><button class="confirm-btn confirm-yes danger">删除</button></div></div>';
-    document.body.appendChild(overlay);
-    var close = function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-    overlay.querySelector(".confirm-no").onclick = close;
-    overlay.querySelector(".confirm-yes").onclick = function() { close(); onYes(); };
-    overlay.onclick = function(e) { if (e.target === overlay) close(); };
-    document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); } });
-  }
-
-  // v0.9.29: delete a scope
+  // v0.9.37: minimal DOM confirm (window.confirm blocked by sandbox)
   async function scopeDelete(scopeName) {
-    showConfirmModal(
-      "确定删除会话 " + scopeName + " 吗？
-此操作不可恢复，该会话的情绪记录将被清空。",
-      async function () {
-        setStatus("connecting", "删除中…");
-        try {
-          var b = getBridge();
-          if (!b) throw new Error("bridge unavailable");
-          await b.apiPost("delete/" + scopeName, {});
-          if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
-          await load();
-        } catch (e) { setError("删除失败: " + (e.message || String(e))); }
-      }
-    );
+    var msg = "确定删除 " + scopeName + "？\n此操作不可恢复。";
+    var div = document.createElement("div");
+    div.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999";
+    div.innerHTML = '<div style="background:var(--card,white);padding:24px;border-radius:14px;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.2)"><p style="margin:0 0 16px;font-size:14px;white-space:pre-line;color:var(--text,#333)">' + esc(msg) + '</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="del-no" style="padding:7px 18px;border:1px solid var(--border,#ccc);border-radius:8px;background:var(--card,white);cursor:pointer">取消</button><button class="del-yes" style="padding:7px 18px;border:none;border-radius:8px;background:var(--red,#ef4444);color:#fff;cursor:pointer;font-weight:600">删除</button></div></div>';
+    document.body.appendChild(div);
+    var close = function() { document.body.removeChild(div); };
+    var run = async function() {
+      close();
+      setStatus("connecting", "删除中…");
+      try {
+        var b = getBridge();
+        if (!b) throw new Error("bridge unavailable");
+        await b.apiPost("delete/" + scopeName, {});
+        if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
+        await load();
+      } catch (e) { setError("删除失败: " + (e.message || String(e))); }
+    };
+    div.querySelector(".del-yes").onclick = run;
+    div.querySelector(".del-no").onclick = close;
+    div.onclick = function(e) { if (e.target === div) close(); };
   }
 
   // ---- Status / errors ----
