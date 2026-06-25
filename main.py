@@ -122,6 +122,10 @@ class EmotionStateMachineStar(Star):
         # reference self.machine which is created above.
         self._register_official_page_api_if_available()
         self._load_state()
+        # v0.9.23: migrate old scope_ids that lack the persona stamp
+        # (pre-v0.9.22 default was ""). Now persona_stamp defaults to
+        # "default", so we rename existing scopes to inject it.
+        self._migrate_scope_ids_if_needed()
 
     def _cfg_bool(self, key: str, default: bool) -> bool:
         """Coerce a config value to bool, tolerating common string forms.
@@ -240,6 +244,45 @@ class EmotionStateMachineStar(Star):
             return Path(configured)
         return self.data_dir / "emotion_state.json"
 
+    def _migrate_scope_ids_if_needed(self) -> None:
+        """v0.9.23: migrate pre-v0.9.22 scope_ids that have no persona stamp.
+
+        Pre-v0.9.22 default ``persona_stamp`` was empty string, so old
+        scope_ids looked like ``webchat:GroupMessageSession`` (no stamp).
+        Now default is ``"default"``, so we rename old scopes to
+        ``webchat:GroupMessageSession:default`` so the WebUI's
+        ``splitScope()`` correctly identifies the persona.
+        """
+        stamp = self._cfg_str("persona_stamp", "default")
+        if not stamp:
+            return  # user explicitly disabled isolation; leave scope_ids alone
+        machine = self.machine
+        renamed = 0
+        old_groups = list(machine.groups.items())
+        for scope_id, snap in old_groups:
+            # Skip if already ends with the configured stamp
+            if scope_id.endswith(":" + stamp):
+                continue
+            new_id = scope_id + ":" + stamp
+            # Move group snapshot
+            machine.groups[new_id] = snap
+            del machine.groups[scope_id]
+            # Move relations bucket
+            if scope_id in machine.relations:
+                machine.relations[new_id] = machine.relations.pop(scope_id)
+            renamed += 1
+            logger.warning(
+                f"[emotion_state_machine] migrated scope "
+                f"{scope_id!r} -> {new_id!r}"
+            )
+        if renamed:
+            self._save_state(force=True)
+            logger.warning(
+                f"[emotion_state_machine] scope_id migration complete: "
+                f"{renamed} scope(s) renamed"
+            )
+
+    
     def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
         stamp = self._cfg_str("persona_stamp", "default")
