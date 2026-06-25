@@ -319,6 +319,9 @@
     }
     try {
       var h = await apiGet("health");
+      if (h && Array.isArray(h.hidden_user_ids) && h.hidden_user_ids.length) {
+        hiddenUserIds = h.hidden_user_ids;
+      }
       state = await apiGet("state");
       setStatus("ok", "已连接");
       renderStats(h, state);
@@ -370,7 +373,9 @@
     activeOnly: false,
     compact: false,
     nonemptyOnly: false,
+    filterBot: false,
   };
+  var hiddenUserIds = ["webchat"];  // populated from /health
   function loadSettings() {
     try {
       var raw = localStorage.getItem(SETTINGS_KEY);
@@ -400,6 +405,7 @@
       "opt-active-only": "activeOnly",
       "opt-compact": "compact",
       "opt-nonempty-only": "nonemptyOnly",
+      "opt-filter-bot": "filterBot",
     };
     Object.keys(map).forEach(function(id) {
       var cb = document.getElementById(id);
@@ -440,6 +446,12 @@
   function shouldShowUser(u) {
     if (settings.activeOnly) {
       if (!u.last_signal || u.last_signal === "—") return false;
+    }
+    if (settings.filterBot && hiddenUserIds.length) {
+      var uid = (u.user_id || "").toLowerCase();
+      for (var i = 0; i < hiddenUserIds.length; i++) {
+        if (uid === hiddenUserIds[i] || uid.indexOf(hiddenUserIds[i]) !== -1) return false;
+      }
     }
     return true;
   }

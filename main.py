@@ -788,11 +788,14 @@ class EmotionStateMachineStar(Star):
 
         async def health():
             machine = self.machine
+            hidden_raw = self._cfg_str("hidden_user_ids", "webchat")
+            hidden = [s.strip().lower() for s in hidden_raw.split(",") if s.strip()]
             return {
                 "version": _ESM_VERSION,
                 "appraisal_mode": machine.appraisal_mode,
                 "signal_count": len(getattr(machine, "groups", {})),
                 "scope_count": len(machine.groups),
+                "hidden_user_ids": hidden,
             }
 
         async def full_state():

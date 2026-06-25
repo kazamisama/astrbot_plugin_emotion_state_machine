@@ -84,5 +84,11 @@
         "type": "list",
         "default": [],
         "items": {"type": "string"}
+    },
+    "hidden_user_ids": {
+        "description": "【v0.9.9】用户表中始终隐藏的 user_id",
+        "hint": "逗号分隔，例如 webchat,bot,astrbot。WebUI 设置里勾「过滤 webchat」时即应用此列表（不区分大小写）。",
+        "type": "string",
+        "default": "webchat"
     }
 }
