@@ -299,7 +299,7 @@ class EmotionStateMachineStar(Star):
         return self._cfg_str("persona_stamp", "default")
 
     async def _resolve_event_persona(self, event: AstrMessageEvent) -> str:
-        """v0.9.26: per-conversation persona lookup, mirrors engram's
+        """v0.9.27: per-conversation persona lookup, mirrors engram's
         persona_resolver. Three tiers:
 
         1. ``sp.get_async("session_service_config")`` (set by
@@ -310,7 +310,8 @@ class EmotionStateMachineStar(Star):
            (global default)
 
         Returns the resolved persona id, or the legacy fallback
-        (``_bot_persona_name()``) on any failure.
+        (``_bot_persona_name()``) on any failure. Each tier logs what
+        it found so we can debug stuck-on-default cases.
         """
         try:
             from astrbot.api import sp
@@ -325,25 +326,40 @@ class EmotionStateMachineStar(Star):
                     key="session_service_config", default={},
                 )
                 pid = (cfg or {}).get("persona_id")
+                logger.info(
+                    f"[emotion_state_machine] persona tier1 (session_service_config) "
+                    f"umo={umo!r} cfg={cfg!r} pid={pid!r}"
+                )
                 if pid:
                     return str(pid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"persona tier1 failed: {exc!r}")
         # tier 2: conversation.persona_id via conversation_manager
         cm = getattr(self.context, "conversation_manager", None)
+        logger.info(
+            f"[emotion_state_machine] persona tier2 cm={type(cm).__name__ if cm else None} "
+            f"umo={umo!r}"
+        )
         if cm is not None and umo:
             try:
                 cid = await cm.get_curr_conversation_id(umo)
+                logger.info(
+                    f"[emotion_state_machine] persona tier2 cid={cid!r}"
+                )
                 if cid is not None:
                     conv = await cm.get_conversation(umo, cid)
                     if conv is not None:
                         pid = getattr(conv, "persona_id", None)
+                        logger.info(
+                            f"[emotion_state_machine] persona tier2 conv.pid={pid!r} "
+                            f"conv_type={type(conv).__name__}"
+                        )
                         if pid == "[%None]":
                             return ""  # explicitly persona-less
                         if pid:
                             return str(pid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"persona tier2 failed: {exc!r}")
         # tier 3: global default persona (per-UMO lookup)
         pm = getattr(self.context, "persona_manager", None)
         if pm is not None:
@@ -351,12 +367,20 @@ class EmotionStateMachineStar(Star):
                 dp = await pm.get_default_persona_v3(umo=umo or None)
                 if isinstance(dp, dict):
                     pid = dp.get("name")
+                    logger.info(
+                        f"[emotion_state_machine] persona tier3 "
+                        f"get_default_persona_v3 name={pid!r}"
+                    )
                     if pid:
                         return str(pid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"persona tier3 failed: {exc!r}")
         # final fallback: sync best-effort
-        return self._bot_persona_name()
+        fallback = self._bot_persona_name()
+        logger.info(
+            f"[emotion_state_machine] persona fallback (sync) -> {fallback!r}"
+        )
+        return fallback
 
     async def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
