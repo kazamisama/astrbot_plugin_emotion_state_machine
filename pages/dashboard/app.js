@@ -266,8 +266,9 @@
   // ---- Status / errors ----
   function setStatus(state_, text) {
     var chip = document.getElementById("status-chip");
+    if (!chip) return;
     var t = chip.querySelector(".status-text");
-    if (chip) chip.setAttribute("data-state", state_);
+    chip.setAttribute("data-state", state_);
     if (t) t.textContent = text;
   }
 
@@ -338,12 +339,27 @@
 
   // ---- Init ----
   bindEvents();
+
+  // Show a fallback error in the groups grid if the bridge is
+  // missing, so the user sees a clear message instead of a blank
+  // page.
+  function showFatal(msg) {
+    setStatus("error", "连接失败");
+    var grid = document.getElementById("groups-grid");
+    if (grid) grid.innerHTML =
+      '<div class="empty">' +
+        '<div class="empty-illustration">⚠️</div>' +
+        '<div class="empty-title">无法连接到插件</div>' +
+        '<div class="empty-desc">' + esc(msg) + '<br>请在 AstrBot 后台 → 插件详情页打开本页面</div>' +
+      '</div>';
+  }
+
   waitForBridge(5000).then(function(b) {
     if (b) {
       load();
       setInterval(load, 20000);
     } else {
-      setStatus("error", "等待桥超时");
+      showFatal("等待 AstrBot 插件桥超时（>5秒）。请刷新页面或在 AstrBot 后台重新进入。");
     }
   });
 })();

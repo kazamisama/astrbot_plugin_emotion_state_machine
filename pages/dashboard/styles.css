@@ -76,10 +76,11 @@
 
 html, body { font-family: var(--font); color: var(--text); -webkit-font-smoothing: antialiased; }
 
+html, body { min-height: 100%; }
+
 body {
   background: var(--bg-grad);
-  min-height: 100vh;
-  background-attachment: fixed;
+  background-repeat: no-repeat;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -90,10 +91,6 @@ body {
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 24px 0 18px;
-  position: sticky; top: 0; z-index: 10;
-  background: linear-gradient(to bottom, var(--bg-grad) 60%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 .brand { display: flex; align-items: center; gap: 14px; }
