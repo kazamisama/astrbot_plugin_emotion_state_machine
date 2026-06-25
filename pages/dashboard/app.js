@@ -419,44 +419,15 @@
 
   // v0.9.40: in-DOM confirm modal (window.confirm blocked by sandbox)
   // Mirrors engram v1.55's _confirmInline pattern.
-  function _confirmInline(message, onYes, opts) {
-    opts = opts || {};
-    var danger = !!opts.danger;
-    var box = document.createElement("div");
-    box.className = "confirm-box" + (danger ? " danger" : "");
-    box.innerHTML = '<div class="confirm-msg"></div><div class="confirm-actions"><button class="confirm-btn">取消</button><button class="confirm-btn' + (danger ? " danger" : "") + '">' + (opts.yesLabel || "确认") + '</button></div>';
-    box.querySelector(".confirm-msg").textContent = message;
-    var overlay = document.createElement("div");
-    overlay.className = "confirm-overlay";
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    var close = function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
-    var yesBtn = box.querySelector(".confirm-btn.danger") || box.querySelectorAll(".confirm-btn")[1];
-    yesBtn.onclick = function() { close(); onYes(); };
-    box.querySelector(".confirm-btn").onclick = close;
-    overlay.onclick = function(e) { if (e.target === overlay) close(); };
-    document.addEventListener("keydown", function esc(e) {
-      if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
-    });
-    setTimeout(function() { try { yesBtn.focus(); } catch(e2) {} }, 0);
-  }
-
   async function scopeDelete(scopeName) {
-    _confirmInline(
-      "确定删除会话 " + scopeName + " 吗？
-此操作不可恢复，该会话的情绪记录将被清空。",
-      async function () {
-        setStatus("connecting", "删除中…");
-        try {
-          var b = getBridge();
-          if (!b) throw new Error("bridge unavailable");
-          await b.apiPost("delete/" + scopeName, {});
-          if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
-          await load();
-        } catch (e) { setError("删除失败: " + (e.message || String(e))); }
-      },
-      { danger: true, yesLabel: "删除" }
-    );
+    setStatus("connecting", "删除中…");
+    try {
+      var b = getBridge();
+      if (!b) throw new Error("bridge unavailable");
+      await b.apiPost("delete/" + scopeName, {});
+      if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
+      await load();
+    } catch (e) { setError("删除失败: " + (e.message || String(e))); }
   }
 
   // ---- Status / errors ----
