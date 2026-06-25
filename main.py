@@ -773,71 +773,85 @@ class EmotionStateMachineStar(Star):
         return sorted(self._get_disabled_signals())
 
     def _register_official_page_api_if_available(self) -> None:
-        """Register the B9-style web API with the AstrBot Dashboard if
-        the host exposes context.register_web_api. Missing on older
-        AstrBot versions: silently skip. Mirrors the engram pattern.
+        """Register plugin Web APIs on the Dashboard.
+
+        v0.8.18: inlined following the official AstrBot plugin-pages
+        guide. The docs example registers routes *directly* in the
+        Star subclass' ``__init__`` via ``context.register_web_api``,
+        rather than delegating to a separate ``page_api.py`` module
+        like engram does. Inlining eliminates one indirection and
+        matches the documented pattern more closely.
         """
         if not hasattr(self.context, "register_web_api"):
             return
+        _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
+        # Use the doc-recommended helpers so we don't depend on Quart
+        # internals.
         try:
-            from page_api import PluginPageApi
+            from astrbot.api.web import (
+                error_response,
+                json_response,
+                request,
+            )
         except Exception as e:
             logger.warning(
-                f"[emotion_state_machine] page_api import failed: {e!r}"
+                f"[emotion_state_machine] astrbot.api.web import failed: {e!r}"
             )
             return
+
+        async def health():
+            machine = self.machine
+            return json_response({
+                "version": __version__,
+                "appraisal_mode": machine.appraisal_mode,
+                "signal_count": len(getattr(machine, "groups", {})),
+                "scope_count": len(machine.groups),
+            })
+
+        async def full_state():
+            return json_response(get_full_state(self.machine))
+
+        async def scope_detail(scope: str):
+            state = get_full_state(self.machine)
+            for s in state["scopes"]:
+                if s["scope"] == scope:
+                    return json_response(s)
+            return error_response(f"scope {scope!r} not found", status_code=404)
+
         try:
-            self._page_api = PluginPageApi(self)
-            self._page_api.register_routes()
-            # v0.8.15: dump the global registered_web_apis list to verify
-            # our routes actually landed. Using logger.warning (NOT print)
-            # because AstrBot captures stdout and filters it out.
+            # Routes follow the doc example: plugin-name prefix, no /page.
+            self.context.register_web_api(
+                f"/{_PLUGIN_NAME}/health", health, ["GET"], "ESM health",
+            )
+            self.context.register_web_api(
+                f"/{_PLUGIN_NAME}/state", full_state, ["GET"], "ESM state",
+            )
+            self.context.register_web_api(
+                f"/{_PLUGIN_NAME}/state/<scope>", scope_detail,
+                ["GET"], "ESM single scope detail",
+            )
+            # Verify
             try:
-                _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
-                # v0.8.17: inspect WHAT Context class our plugin sees vs
-                # what the Dashboard reads from. Two different Context
-                # classes would explain our routes not landing in the
-                # Dashboard's list even though register() returned cleanly.
-                ctx = self.context
+                _PN = _PLUGIN_NAME
+                apis = self.context.registered_web_apis
+                ours = [r[0] for r in apis if r[0] and _PN in r[0]]
                 logger.warning(
-                    f"[emotion_state_machine] context class: "
-                    f"{ctx.__class__.__module__}.{ctx.__class__.__qualname__}, "
-                    f"ctx.id={id(ctx)}, "
-                    f"list.id={id(ctx.registered_web_apis)}, "
-                    f"list.cls={ctx.registered_web_apis.__class__.__name__}"
+                    f"[emotion_state_machine] post-register (inlined): "
+                    f"total={len(apis)}, our_routes={len(ours)}: {ours}"
                 )
-                # Call register ourselves and check the list right after.
-                # If append() silently no-ops, list.id won't change.
-                before_count = len(ctx.registered_web_apis)
-                ctx.register_web_api(
-                    f"/{_PLUGIN_NAME}/page/diagtest",
-                    lambda: "ok",
-                    ["GET"],
-                    "diagnostic test",
-                )
-                after_count = len(ctx.registered_web_apis)
-                logger.warning(
-                    f"[emotion_state_machine] diagtest direct-register: "
-                    f"before={before_count}, after={after_count}, "
-                    f"diff={after_count - before_count}"
-                )
-                apis = ctx.registered_web_apis
-                our_paths = [
-                    r[0] for r in apis if r[0] and _PLUGIN_NAME in r[0]
-                ]
-                logger.warning(
-                    f"[emotion_state_machine] post-register: total_apis="
-                    f"{len(apis)}, our_routes={len(our_paths)}: {our_paths}"
-                )
+                if not ours:
+                    logger.warning(
+                        "[emotion_state_machine] WARNING: inlined routes "
+                        "still missing — this confirms register_web_api "
+                        "writes somewhere the Dashboard does NOT read."
+                    )
             except Exception as diag_e:
                 logger.warning(
-                    f"[emotion_state_machine] post-register dump failed: "
-                    f"{diag_e!r}"
+                    f"[emotion_state_machine] dump failed: {diag_e!r}"
                 )
         except Exception as e:
-            self._page_api = None
             logger.warning(
-                f"[emotion_state_machine] page_api register failed: {e!r}"
+                f"[emotion_state_machine] register_web_api raised: {e!r}"
             )
 
     async def terminate(self):
