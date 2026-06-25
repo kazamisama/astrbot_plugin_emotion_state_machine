@@ -245,15 +245,15 @@ class EmotionStateMachineStar(Star):
         return self.data_dir / "emotion_state.json"
 
     def _migrate_scope_ids_if_needed(self) -> None:
-        """v0.9.23: migrate pre-v0.9.22 scope_ids that have no persona stamp.
+        """v0.9.23 / v0.9.24: migrate pre-v0.9.22 scope_ids that have
+        no persona stamp, appending the current bot persona name.
 
         Pre-v0.9.22 default ``persona_stamp`` was empty string, so old
-        scope_ids looked like ``webchat:GroupMessageSession`` (no stamp).
-        Now default is ``"default"``, so we rename old scopes to
-        ``webchat:GroupMessageSession:default`` so the WebUI's
-        ``splitScope()`` correctly identifies the persona.
+        scope_ids looked like ``webchat:GroupMessageSession`` (no
+        stamp). With v0.9.24 we now read the bot's persona from
+        AstrBot's persona_manager, so the migration uses that name.
         """
-        stamp = self._cfg_str("persona_stamp", "default")
+        stamp = self._bot_persona_name()
         if not stamp:
             return  # user explicitly disabled isolation; leave scope_ids alone
         machine = self.machine
@@ -283,9 +283,30 @@ class EmotionStateMachineStar(Star):
             )
 
     
+    def _bot_persona_name(self) -> str:
+        """v0.9.24: get the bot's currently-active persona name from
+        AstrBot's persona manager. Returns the configured
+        ``provider_settings.default_personality`` (e.g. "default",
+        "shirley", "alice"), or the ``persona_stamp`` config as a
+        fallback for backward compat.
+        """
+        try:
+            pm = getattr(self.context, "persona_manager", None)
+            if pm is not None:
+                # `default_persona` is the persona NAME (string),
+                # not the persona object — exactly what we want for
+                # the WebUI's persona dropdown.
+                name = getattr(pm, "default_persona", None)
+                if isinstance(name, str) and name:
+                    return name
+        except Exception:
+            pass
+        # Fallback: persona_stamp config (or "default")
+        return self._cfg_str("persona_stamp", "default")
+
     def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
-        stamp = self._cfg_str("persona_stamp", "default")
+        stamp = self._bot_persona_name()
         return f"{base}:{stamp}" if stamp else base
 
     def _load_state(self) -> None:
@@ -838,14 +859,12 @@ class EmotionStateMachineStar(Star):
             return {
                 "version": _ESM_VERSION,
                 "appraisal_mode": machine.appraisal_mode,
-                # v0.9.21 fix: signal_count must be the number of distinct
-                # signal TYPES (13), not the number of groups (which
-                # equalled scope_count and made the stat card useless).
                 "signal_count": len(signal_names()),
                 "scope_count": len(machine.groups),
                 "hidden_user_ids": hidden_users,
                 "hidden_scope_patterns": hidden_scopes,
                 "active_window_seconds": machine.active_window_seconds,
+                "bot_persona": self._bot_persona_name(),
             }
 
         async def full_state():
