@@ -1,11 +1,13 @@
-/* ESM Dashboard — uses AstrBotPluginPage bridge SDK.
+/* ESM Dashboard — v0.9.0
  *
- * The bridge is injected by AstrBot AFTER this <script> runs, so we
- * wait for it on init (retry every 50ms up to 5s). The bridge prefixes
- * the plugin name to relative paths like "page/health", so we never
- * hardcode the full URL.
+ * Uses window.AstrBotPluginPage bridge (injected by AstrBot after this
+ * file loads). Backend routes are at /{PLUGIN_NAME}/<endpoint>; the
+ * bridge adds the plugin-name prefix, so we pass relative paths
+ * (no leading slash, no extra "page/" prefix).
  */
 (function() {
+  "use strict";
+
   function getBridge() { return window.AstrBotPluginPage || null; }
 
   function waitForBridge(timeoutMs) {
@@ -21,242 +23,327 @@
     });
   }
 
-  // v0.8.20: per the official AstrBot plugin-pages guide the
-  // endpoint passed to bridge.apiGet() should NOT include any extra
-  // prefix — the bridge adds the plugin-name prefix. The backend
-  // handlers are registered at /{PLUGIN_NAME}/<endpoint>, so we pass
-  // "health", "state", etc. (no "page/" prefix). The previous code
-  // added a "page/" prefix that the backend never used after the
-  // v0.8.18 path-format switch, which is what caused "未找到该路由".
-  function endpoint(path) {
-    return String(path).replace(/^\/+/, '');
-  }
-
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
-      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
     });
   }
 
-  var state = null, activeScope = null, loadCount = 0;
-
-  async function apiGet(path) {
-    var b = getBridge();
-    if (!b) throw new Error('bridge not available');
-    var resp = await b.apiGet(endpoint(path), {});
-    if (resp && resp.status === 'error') throw new Error(resp.message || 'API error');
-    return resp && 'data' in resp ? resp.data : resp;
-  }
-
-  // ---- Tab switching ----
-  function initTabs() {
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].addEventListener('click', function() {
-        var self = this;
-        var allTabs = document.querySelectorAll('.tab');
-        for (var j = 0; j < allTabs.length; j++) allTabs[j].classList.remove('active');
-        self.classList.add('active');
-        var panels = document.querySelectorAll('.panel');
-        for (var k = 0; k < panels.length; k++) panels[k].classList.remove('active');
-        var target = document.querySelector('[data-panel="' + self.dataset.tab + '"]');
-        if (target) target.classList.add('active');
-        if (self.dataset.tab === 'groups') renderGroups();
-      });
-    }
-  }
-
-  // ---- Load ----
-  async function load() {
-    var b = getBridge();
-    if (!b) {
-      var h = document.getElementById('health');
-      if (h) { h.textContent = '⚠ AstrBot 插件桥不可用 — 请在 AstrBot 后台打开本页面'; h.style.color = '#c62828'; }
-      return;
-    }
-    try {
-      var health = await apiGet('/health');
-      var h2 = document.getElementById('health');
-      if (h2) h2.textContent = 'v' + health.version + ' · ' + health.appraisal_mode + ' · ' + health.scope_count + ' 个群';
-      state = await apiGet('/state');
-      renderOverview();
-      var activeTab = document.querySelector('.tab.active');
-      if (activeTab && activeTab.dataset.tab === 'groups') renderGroups();
-      var hint = document.getElementById('refresh-hint');
-      if (hint) hint.textContent = '刷新: ' + new Date().toLocaleTimeString();
-      loadCount++;
-    } catch(e) {
-      var h3 = document.getElementById('health');
-      if (h3) {
-        h3.textContent = '⚠ ' + (e.message || e);
-        h3.style.color = '#c62828';
-      }
-    }
-  }
-
-  // ---- Overview ----
-  function renderOverview() {
-    var cards = document.getElementById('overview-cards');
-    if (!cards || !state) return;
-    var totalUsers = 0;
-    for (var i = 0; i < state.scopes.length; i++) totalUsers += state.scopes[i].users.length;
-    cards.innerHTML =
-      '<div class="card stat-card"><div class="num" style="color:var(--blue)">' + state.scopes.length + '</div><div class="label">活跃群聊</div></div>' +
-      '<div class="card stat-card"><div class="num" style="color:var(--green)">' + state.signal_count + '</div><div class="label">信号类型</div></div>' +
-      '<div class="card stat-card"><div class="num" style="color:var(--purple)">' + state.appraisal_mode + '</div><div class="label">评价模式</div></div>' +
-      '<div class="card stat-card"><div class="num" style="color:var(--orange)">' + totalUsers + '</div><div class="label">用户关系数</div></div>';
-  }
-
-  // ---- Groups panel ----
-  function renderGroups() {
-    var sel = document.getElementById('scope-select');
-    if (!sel) return;
-    var prev = sel.value;
-    sel.innerHTML = '<option value="">-- 选择群聊 --</option>';
-    if (state) {
-      for (var i = 0; i < state.scopes.length; i++) {
-        var s = state.scopes[i];
-        var opt = document.createElement('option');
-        opt.value = s.scope;
-        opt.textContent = s.scope + ' (' + s.users.length + '人, ' + s.group.label + ')';
-        sel.appendChild(opt);
-      }
-    }
-    var found = false;
-    for (var j = 0; j < sel.options.length; j++) {
-      if (sel.options[j].value === prev) { found = true; break; }
-    }
-    if (found) sel.value = prev;
-    if (prev) showGroup(prev); else showEmpty();
-  }
-
-  function bindScopeSelect() {
-    var sel = document.getElementById('scope-select');
-    if (!sel || sel._esmBound) return;
-    sel._esmBound = true;
-    sel.addEventListener('change', function() {
-      this.value ? showGroup(this.value) : showEmpty();
-    });
-  }
-
-  function showEmpty() {
-    var gc = document.getElementById('group-card');
-    if (gc) gc.innerHTML = '';
-    var uc = document.getElementById('user-card');
-    if (uc) uc.style.display = 'none';
-    activeScope = null;
-  }
-
-  function showGroup(scopeName) {
-    var found = null;
-    if (state) {
-      for (var i = 0; i < state.scopes.length; i++) {
-        if (state.scopes[i].scope === scopeName) { found = state.scopes[i]; break; }
-      }
-    }
-    if (!found) return showEmpty();
-    activeScope = found;
-    renderGroupCard(found);
-    renderUserTable(found);
+  // Mood → color/emoji mapping
+  var MOOD_STYLE = {
+    calm:      { color: "#0ea5e9", emoji: "🌊", desc: "心绪平稳，没有强烈起伏" },
+    happy:     { color: "#10b981", emoji: "😊", desc: "整体氛围愉快、轻松" },
+    excited:   { color: "#f59e0b", emoji: "🤩", desc: "情绪高涨，活跃度高" },
+    curious:   { color: "#8b5cf6", emoji: "🤔", desc: "对话充满好奇与探索" },
+    tense:     { color: "#ef4444", emoji: "😟", desc: "气氛紧绷，警戒中" },
+    annoyed:   { color: "#f97316", emoji: "😤", desc: "略显不耐烦或烦躁" },
+    irritated: { color: "#dc2626", emoji: "😠", desc: "明显受挫或生气" },
+    quiet:     { color: "#6b7280", emoji: "😶", desc: "低活跃度，情绪平稳" },
+    hurt:      { color: "#ec4899", emoji: "🥺", desc: "对话中带伤感的色彩" },
+    trusted:   { color: "#10b981", emoji: "🤝", desc: "信任与亲近" },
+    guarded:   { color: "#f59e0b", emoji: "🛡️", desc: "保持距离、保留意见" },
+    attached:  { color: "#a855f7", emoji: "💞", desc: "情感连接紧密" },
+    unfamiliar:{ color: "#94a3b8", emoji: "👋", desc: "初次接触、互相试探" },
+    neutral:   { color: "#94a3b8", emoji: "😐", desc: "中性状态" },
+    irritated: { color: "#dc2626", emoji: "😠", desc: "明显受挫或生气" },
+  };
+  function moodStyle(label) {
+    if (!label) return MOOD_STYLE.neutral;
+    return MOOD_STYLE[String(label).toLowerCase()] || MOOD_STYLE.neutral;
   }
 
   function barColor(dim, val) {
-    if (dim === 'stress' || dim === 'irritation') return val > 0.6 ? 'var(--red)' : 'var(--orange)';
-    if (dim === 'valence' || dim === 'trust' || dim === 'affection') return val > 0.5 ? 'var(--green)' : 'var(--orange)';
-    if (dim === 'curiosity' || dim === 'familiarity') return val > 0.5 ? 'var(--blue)' : '#777';
-    return 'var(--blue)';
+    if (dim === "stress" || dim === "irritation")
+      return val > 0.6 ? "var(--red)" : "var(--amber)";
+    if (dim === "valence" || dim === "trust" || dim === "affection")
+      return val > 0.5 ? "var(--green)" : "var(--amber)";
+    if (dim === "curiosity" || dim === "familiarity")
+      return val > 0.5 ? "var(--accent)" : "var(--text-3)";
+    return "var(--accent)";
   }
 
-  function dimBar(label, val) {
+  function dimBarHTML(label, val) {
     return '<div class="dim-row">' +
-      '<span class="dim-label">' + label + '</span>' +
-      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(label,val) + '"></div></div>' +
+      '<span class="dim-label">' + esc(label) + '</span>' +
+      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(label, val) + '"></div></div>' +
       '<span class="dim-val">' + val.toFixed(2) + '</span>' +
     '</div>';
   }
 
-  function renderGroupCard(s) {
-    var g = s.group, p = g.pad;
-    var gc = document.getElementById('group-card');
-    if (!gc) return;
-    gc.innerHTML =
-      '<div class="card">' +
-        '<h2>' + escapeHtml(s.scope) + ' <span class="label-badge label-' + g.label + '">' + g.label + '</span></h2>' +
-        dimBar('valence', g.valence) +
-        dimBar('arousal', g.arousal) +
-        dimBar('stress', g.stress) +
-        dimBar('curiosity', g.curiosity) +
-        '<div class="pad-badge">' +
-          '<span>P=' + p.P.toFixed(2) + '</span>' +
-          '<span>A=' + p.A.toFixed(2) + '</span>' +
-          '<span>D=' + p.D.toFixed(2) + '</span>' +
-        '</div>' +
-        '<div class="group-meta">active: ' + g.active_users + ' 人 | signal: ' + g.last_signal + ' | transitions: ' + g.transitions + '</div>' +
-      '</div>';
-  }
-
-  function renderUserTable(s) {
-    var uc = document.getElementById('user-card');
-    if (uc) uc.style.display = 'block';
-    filterUsers();
-  }
-
-  function filterUsers() {
-    if (!activeScope) return;
-    var input = document.getElementById('user-filter');
-    var q = (input && input.value ? input.value : '').toLowerCase();
-    var users = [];
-    for (var i = 0; i < activeScope.users.length; i++) {
-      if (activeScope.users[i].user_id.toLowerCase().indexOf(q) !== -1) users.push(activeScope.users[i]);
-    }
-    var html = '<table><thead><tr>' +
-      '<th>用户 ID</th><th>trust</th><th>affection</th><th>irritation</th><th>familiarity</th><th>label</th><th>last</th>' +
-    '</tr></thead><tbody>';
-    for (var j = 0; j < users.length; j++) {
-      var u = users[j];
-      html += '<tr>' +
-        '<td>' + escapeHtml(u.user_id) + '</td>' +
-        '<td>' + dimCell('trust', u.trust) + '</td>' +
-        '<td>' + dimCell('affection', u.affection) + '</td>' +
-        '<td>' + dimCell('irritation', u.irritation) + '</td>' +
-        '<td>' + dimCell('familiarity', u.familiarity) + '</td>' +
-        '<td><span class="label-badge label-' + u.label + '">' + u.label + '</span></td>' +
-        '<td style="font-size:0.75rem;color:var(--text-2)">' + u.last_signal + '</td>' +
-      '</tr>';
-    }
-    html += '</tbody></table>';
-    if (!users.length) html = '<div class="empty">无匹配用户</div>';
-    var tb = document.getElementById('user-table');
-    if (tb) tb.innerHTML = html;
-  }
-
-  function dimCell(dim, val) {
-    return '<div class="dim-row" style="margin:0">' +
-      '<div class="dim-bar-bg" style="height:12px"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(dim,val) + ';height:12px"></div></div>' +
-      '<span class="dim-val" style="width:38px;font-size:0.75rem">' + val.toFixed(2) + '</span>' +
+  function dimCellHTML(dim, val) {
+    return '<div class="dim-row">' +
+      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(dim, val) + '"></div></div>' +
+      '<span class="dim-val">' + val.toFixed(2) + '</span>' +
     '</div>';
   }
 
-  function bindUserFilter() {
-    var input = document.getElementById('user-filter');
-    if (!input || input._esmBound) return;
-    input._esmBound = true;
-    input.addEventListener('input', filterUsers);
+  // ---- API helpers ----
+  var state = null, activeScope = null, filterQ = "";
+  async function apiGet(path) {
+    var b = getBridge();
+    if (!b) throw new Error("bridge unavailable");
+    var resp = await b.apiGet(path, {});
+    if (resp && resp.status === "error") throw new Error(resp.message || "API error");
+    return resp && "data" in resp ? resp.data : resp;
+  }
+
+  // ---- Render: hero ----
+  function renderHero(scope) {
+    var label = scope ? scope.group.label : "neutral";
+    var m = moodStyle(label);
+    var moodEl = document.getElementById("mood-emoji");
+    var labelEl = document.getElementById("mood-label");
+    var descEl = document.getElementById("mood-desc");
+    var orb = document.getElementById("mood-orb");
+    if (moodEl) moodEl.textContent = m.emoji;
+    if (labelEl) labelEl.textContent = label;
+    if (descEl) descEl.textContent = scope ? m.desc : "等待数据…";
+    if (orb) {
+      orb.style.setProperty("--orb-bg", "linear-gradient(135deg, " + m.color + " 0%, " + m.color + "99 100%)");
+      orb.style.setProperty("--orb-shadow", m.color + "55");
+    }
+    var root = document.documentElement;
+    if (root) root.style.setProperty("--orb-glow", m.color + "20");
+    var pad = scope ? scope.group.pad : { P: 0, A: 0, D: 0 };
+    var pP = document.getElementById("pad-p");
+    var pA = document.getElementById("pad-a");
+    var pD = document.getElementById("pad-d");
+    if (pP) pP.style.width = (Math.max(0, Math.min(1, (pad.P + 1) / 2)) * 100) + "%";
+    if (pA) pA.style.width = (Math.max(0, Math.min(1, (pad.A + 1) / 2)) * 100) + "%";
+    if (pD) pD.style.width = (Math.max(0, Math.min(1, (pad.D + 1) / 2)) * 100) + "%";
+    var pPv = document.getElementById("pad-p-v");
+    var pAv = document.getElementById("pad-a-v");
+    var pDv = document.getElementById("pad-d-v");
+    if (pPv) pPv.textContent = pad.P.toFixed(2);
+    if (pAv) pAv.textContent = pad.A.toFixed(2);
+    if (pDv) pDv.textContent = pad.D.toFixed(2);
+    var active = scope ? scope.group.active_users : 0;
+    var trans = scope ? scope.group.transitions : 0;
+    var activeEl = document.getElementById("side-active");
+    var transEl = document.getElementById("side-transitions");
+    if (activeEl) activeEl.textContent = active;
+    if (transEl) transEl.textContent = trans;
+  }
+
+  // ---- Render: stat cards ----
+  function renderStats(h, fullState) {
+    var scopes = (fullState && fullState.scopes) || [];
+    var totalUsers = 0;
+    for (var i = 0; i < scopes.length; i++) totalUsers += scopes[i].users.length;
+    var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+    set("stat-scopes", scopes.length);
+    set("stat-users", totalUsers);
+    set("stat-signals", (h && h.signal_count) || "—");
+    set("stat-version", (h && h.version) || "—");
+    var modeEl = document.getElementById("side-mode");
+    if (modeEl) modeEl.textContent = (h && h.appraisal_mode) || "—";
+    var subEl = document.getElementById("brand-sub");
+    if (subEl && h && h.version) subEl.textContent = "情绪状态机 · v" + h.version;
+  }
+
+  // ---- Render: groups grid ----
+  function renderGroups() {
+    var grid = document.getElementById("groups-grid");
+    var sel = document.getElementById("scope-select");
+    if (!state || !state.scopes || !state.scopes.length) {
+      grid.innerHTML =
+        '<div class="empty">' +
+          '<div class="empty-illustration">🌱</div>' +
+          '<div class="empty-title">还没有群聊活动</div>' +
+          '<div class="empty-desc">机器人接收消息后，这里会显示各群的情绪快照</div>' +
+        '</div>';
+      if (sel) sel.innerHTML = '<option value="">所有群聊</option>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < state.scopes.length; i++) {
+      var s = state.scopes[i];
+      var m = moodStyle(s.group.label);
+      var active = (activeScope && activeScope.scope === s.scope) ? " active" : "";
+      html +=
+        '<div class="group-card' + active + '" data-scope="' + esc(s.scope) + '" style="--mood-color: ' + m.color + '">' +
+          '<div class="group-head">' +
+            '<div class="group-name" title="' + esc(s.scope) + '">' + esc(s.scope) + '</div>' +
+            '<span class="label-badge" style="background: ' + m.color + '">' + esc(s.group.label) + '</span>' +
+          '</div>' +
+          dimBarHTML("valence", s.group.valence) +
+          dimBarHTML("arousal", s.group.arousal) +
+          dimBarHTML("stress", s.group.stress) +
+          dimBarHTML("curiosity", s.group.curiosity) +
+          '<div class="group-meta">' +
+            '<span class="group-users-count">' + s.users.length + ' 用户</span>' +
+            '<span>最新: ' + esc(s.group.last_signal || "—") + '</span>' +
+          '</div>' +
+        '</div>';
+    }
+    grid.innerHTML = html;
+
+    // wire card click
+    var cards = grid.querySelectorAll(".group-card");
+    for (var j = 0; j < cards.length; j++) {
+      (function(card) {
+        card.addEventListener("click", function() {
+          var sc = card.getAttribute("data-scope");
+          if (sel) sel.value = sc;
+          showGroup(sc);
+        });
+      })(cards[j]);
+    }
+
+    // select options
+    var prev = sel.value;
+    sel.innerHTML = '<option value="">所有群聊</option>';
+    for (var k = 0; k < state.scopes.length; k++) {
+      var ss = state.scopes[k];
+      var opt = document.createElement("option");
+      opt.value = ss.scope;
+      opt.textContent = ss.scope + " · " + ss.users.length + "人";
+      sel.appendChild(opt);
+    }
+    if (prev) sel.value = prev;
+  }
+
+  // ---- User table ----
+  function showUserTable() {
+    var sec = document.getElementById("user-section");
+    if (!state || !state.scopes || !state.scopes.length) {
+      sec.style.display = "none";
+      return;
+    }
+    sec.style.display = "";
+    var scopes = activeScope ? [activeScope] : state.scopes;
+    var html = '<div class="users-row head">' +
+      '<div>用户 ID</div><div>trust</div><div>affection</div>' +
+      '<div>irritation</div><div>familiarity</div><div>label</div><div>最近信号</div>' +
+      '</div>';
+    var totalUsers = 0;
+    var q = filterQ.toLowerCase();
+    for (var i = 0; i < scopes.length; i++) {
+      var s = scopes[i];
+      for (var j = 0; j < s.users.length; j++) {
+        var u = s.users[j];
+        if (q && u.user_id.toLowerCase().indexOf(q) === -1) continue;
+        var m = moodStyle(u.label);
+        html += '<div class="users-row">' +
+          '<div class="user-id" title="' + esc(u.user_id) + '">' + esc(u.user_id) + '</div>' +
+          '<div>' + dimCellHTML("trust", u.trust) + '</div>' +
+          '<div>' + dimCellHTML("affection", u.affection) + '</div>' +
+          '<div>' + dimCellHTML("irritation", u.irritation) + '</div>' +
+          '<div>' + dimCellHTML("familiarity", u.familiarity) + '</div>' +
+          '<div><span class="label-badge" style="background: ' + m.color + '">' + esc(u.label) + '</span></div>' +
+          '<div style="font-size:0.75rem;color:var(--text-2)">' + esc(u.last_signal || "—") + '</div>' +
+        '</div>';
+        totalUsers++;
+      }
+    }
+    if (totalUsers === 0) {
+      html += '<div class="users-empty">没有匹配的用户</div>';
+    }
+    var tableEl = document.getElementById("users-table");
+    tableEl.innerHTML = html;
+    var countEl = document.getElementById("user-count");
+    if (countEl) countEl.textContent = totalUsers + " / " +
+      scopes.reduce(function(a, s) { return a + s.users.length; }, 0) + " 个用户";
+  }
+
+  function showGroup(scopeName) {
+    if (!state) return;
+    var found = null;
+    for (var i = 0; i < state.scopes.length; i++) {
+      if (state.scopes[i].scope === scopeName) { found = state.scopes[i]; break; }
+    }
+    if (!found) {
+      activeScope = null;
+      renderHero(null);
+    } else {
+      activeScope = found;
+      renderHero(found);
+    }
+    renderGroups();
+    showUserTable();
+  }
+
+  // ---- Status / errors ----
+  function setStatus(state_, text) {
+    var chip = document.getElementById("status-chip");
+    var t = chip.querySelector(".status-text");
+    if (chip) chip.setAttribute("data-state", state_);
+    if (t) t.textContent = text;
+  }
+
+  function setError(msg) {
+    setStatus("error", "连接失败");
+    var grid = document.getElementById("groups-grid");
+    if (grid) {
+      grid.innerHTML =
+        '<div class="empty">' +
+          '<div class="empty-illustration">⚠️</div>' +
+          '<div class="empty-title">加载失败</div>' +
+          '<div class="empty-desc">' + esc(msg) + '</div>' +
+        '</div>';
+    }
+  }
+
+  // ---- Main load ----
+  async function load() {
+    var b = getBridge();
+    if (!b) {
+      setStatus("error", "插件桥不可用");
+      return;
+    }
+    try {
+      var h = await apiGet("health");
+      state = await apiGet("state");
+      setStatus("ok", "已连接");
+      renderStats(h, state);
+      // Hero = first scope (or null)
+      renderHero(state.scopes[0] || null);
+      renderGroups();
+      showUserTable();
+      var upd = document.getElementById("last-update");
+      if (upd) upd.textContent = "更新于 " + new Date().toLocaleTimeString();
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  }
+
+  // ---- Wire events ----
+  function bindEvents() {
+    var sel = document.getElementById("scope-select");
+    if (sel) sel.addEventListener("change", function() {
+      var v = sel.value;
+      if (v) showGroup(v);
+      else { activeScope = null; renderHero(null); renderGroups(); showUserTable(); }
+    });
+    var filter = document.getElementById("user-filter");
+    if (filter) filter.addEventListener("input", function() {
+      filterQ = filter.value || "";
+      showUserTable();
+    });
+    var btn = document.getElementById("refresh-btn");
+    if (btn) btn.addEventListener("click", function() {
+      btn.classList.add("spinning");
+      load().finally(function() { setTimeout(function() {
+        btn.classList.remove("spinning");
+      }, 600); });
+    });
+    // Re-render mood colors when theme changes
+    var root = document.documentElement;
+    if (root && window.MutationObserver) {
+      new MutationObserver(function() {
+        if (state) renderGroups();
+      }).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    }
   }
 
   // ---- Init ----
-  initTabs();
-  bindScopeSelect();
-  bindUserFilter();
-
-  // Wait for AstrBot bridge (injected after this script runs).
+  bindEvents();
   waitForBridge(5000).then(function(b) {
     if (b) {
       load();
-      setInterval(load, 15000);
+      setInterval(load, 20000);
     } else {
-      var h = document.getElementById('health');
-      if (h) { h.textContent = '⚠ 等待 AstrBot 插件桥超时 — 请在 AstrBot 后台打开本页面'; h.style.color = '#c62828'; }
+      setStatus("error", "等待桥超时");
     }
   });
 })();

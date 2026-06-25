@@ -775,24 +775,16 @@ class EmotionStateMachineStar(Star):
         return sorted(self._get_disabled_signals())
 
     def _register_official_page_api_if_available(self) -> None:
-        """Register plugin Web APIs on the Dashboard.
+        """Register plugin Web APIs on the AstrBot Dashboard.
 
-        v0.8.18: inlined following the official AstrBot plugin-pages
-        guide. The docs example registers routes *directly* in the
-        Star subclass' ``__init__`` via ``context.register_web_api``,
-        rather than delegating to a separate ``page_api.py`` module
-        like engram does. Inlining eliminates one indirection and
-        matches the documented pattern more closely.
+        v0.9.0: cleaned up — diagnostic logging removed now that the
+        registration flow is verified to work. Routes are registered
+        directly in the Star's ``__init__`` per the official
+        AstrBot plugin-pages guide.
         """
         if not hasattr(self.context, "register_web_api"):
             return
         _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
-        # Use the doc-recommended helpers so we don't depend on Quart
-        # internals.
-        # v0.8.19: astrbot.api.web doesn't exist in v4.25.5 (the docs
-        # example refers to a newer version). Fall back to returning
-        # plain dicts — the server accepts them and JSON-encodes
-        # automatically.
 
         async def health():
             machine = self.machine
@@ -814,7 +806,6 @@ class EmotionStateMachineStar(Star):
             return {"error": "scope not found", "scope": scope}
 
         try:
-            # Routes follow the doc example: plugin-name prefix, no /page.
             self.context.register_web_api(
                 f"/{_PLUGIN_NAME}/health", health, ["GET"], "ESM health",
             )
@@ -825,25 +816,6 @@ class EmotionStateMachineStar(Star):
                 f"/{_PLUGIN_NAME}/state/<scope>", scope_detail,
                 ["GET"], "ESM single scope detail",
             )
-            # Verify
-            try:
-                _PN = _PLUGIN_NAME
-                apis = self.context.registered_web_apis
-                ours = [r[0] for r in apis if r[0] and _PN in r[0]]
-                logger.warning(
-                    f"[emotion_state_machine] post-register (inlined): "
-                    f"total={len(apis)}, our_routes={len(ours)}: {ours}"
-                )
-                if not ours:
-                    logger.warning(
-                        "[emotion_state_machine] WARNING: inlined routes "
-                        "still missing — this confirms register_web_api "
-                        "writes somewhere the Dashboard does NOT read."
-                    )
-            except Exception as diag_e:
-                logger.warning(
-                    f"[emotion_state_machine] dump failed: {diag_e!r}"
-                )
         except Exception as e:
             logger.warning(
                 f"[emotion_state_machine] register_web_api raised: {e!r}"

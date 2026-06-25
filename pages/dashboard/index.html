@@ -7,40 +7,166 @@
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<div id="app">
+<div class="app" id="app">
+  <!-- Top bar -->
   <header class="topbar">
     <div class="brand">
-      <span class="brand-dot"></span>
-      <span class="brand-name">ESM</span>
-      <span class="brand-sub">　情绪状态机</span>
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 L15 8 L21 9 L17 14 L18 20 L12 17 L6 20 L7 14 L3 9 L9 8 Z" />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1>Emotion State Machine</h1>
+        <p id="brand-sub">情绪状态机 · v0.9.0</p>
+      </div>
     </div>
-    <div class="status" id="health">连接中…</div>
+    <div class="topbar-right">
+      <div class="status-chip" id="status-chip" data-state="connecting">
+        <span class="status-dot"></span>
+        <span class="status-text">连接中…</span>
+      </div>
+      <button class="icon-btn" id="refresh-btn" title="刷新" aria-label="刷新">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-3-6.7" />
+          <polyline points="21 4 21 10 15 10" />
+        </svg>
+      </button>
+    </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="overview">总览</button>
-    <button class="tab" data-tab="groups">群聊状态</button>
-  </nav>
+  <main class="content">
+    <!-- HERO: current mood overview -->
+    <section class="hero">
+      <div class="hero-mood" id="hero-mood">
+        <div class="mood-orb" id="mood-orb">
+          <div class="mood-emoji" id="mood-emoji">🌊</div>
+        </div>
+        <div class="mood-meta">
+          <div class="mood-label" id="mood-label">Calm</div>
+          <div class="mood-desc" id="mood-desc">正在加载…</div>
+        </div>
+        <div class="mood-pad">
+          <div class="pad-row">
+            <span class="pad-label">P</span>
+            <div class="pad-track"><div class="pad-fill" id="pad-p" style="width: 0%"></div></div>
+            <span class="pad-val" id="pad-p-v">0.00</span>
+          </div>
+          <div class="pad-row">
+            <span class="pad-label">A</span>
+            <div class="pad-track"><div class="pad-fill" id="pad-a" style="width: 0%"></div></div>
+            <span class="pad-val" id="pad-a-v">0.00</span>
+          </div>
+          <div class="pad-row">
+            <span class="pad-label">D</span>
+            <div class="pad-track"><div class="pad-fill" id="pad-d" style="width: 0%"></div></div>
+            <span class="pad-val" id="pad-d-v">0.00</span>
+          </div>
+        </div>
+      </div>
 
-  <main>
-    <section class="panel active" data-panel="overview">
-      <div class="cards" id="overview-cards"></div>
+      <div class="hero-side">
+        <div class="side-stat">
+          <div class="side-stat-num" id="side-active">0</div>
+          <div class="side-stat-label">活跃用户</div>
+        </div>
+        <div class="side-stat">
+          <div class="side-stat-num" id="side-transitions">0</div>
+          <div class="side-stat-label">状态迁移</div>
+        </div>
+        <div class="side-stat">
+          <div class="side-stat-num" id="side-mode">—</div>
+          <div class="side-stat-label">评价模式</div>
+        </div>
+      </div>
     </section>
 
-    <section class="panel" data-panel="groups">
-      <div class="toolbar">
-        <select id="scope-select" class="input">
-          <option value="">-- 选择群聊 --</option>
-        </select>
-        <input id="user-filter" class="input input-grow" type="text" placeholder="搜索用户 ID…" oninput="filterUsers()">
-        <span class="refresh" id="refresh-hint"></span>
+    <!-- Stats row -->
+    <section class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="background: var(--accent-soft); color: var(--accent)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-scopes">—</div>
+          <div class="stat-label">活跃群聊</div>
+        </div>
       </div>
-      <div id="group-card"></div>
-      <div class="card" id="user-card" style="display:none">
+      <div class="stat-card">
+        <div class="stat-icon" style="background: var(--green-soft); color: var(--green)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-users">—</div>
+          <div class="stat-label">用户关系</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: var(--amber-soft); color: var(--amber)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-signals">—</div>
+          <div class="stat-label">信号类型</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: var(--violet-soft); color: var(--violet)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-version">—</div>
+          <div class="stat-label">插件版本</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Groups grid -->
+    <section class="section">
+      <div class="section-head">
+        <h2>群聊状态</h2>
+        <div class="section-tools">
+          <select id="scope-select" class="select">
+            <option value="">所有群聊</option>
+          </select>
+          <input id="user-filter" class="input" type="text" placeholder="按用户 ID 搜索…">
+        </div>
+      </div>
+      <div id="groups-grid" class="groups-grid">
+        <div class="empty">
+          <div class="empty-illustration">🌱</div>
+          <div class="empty-title">还没有群聊活动</div>
+          <div class="empty-desc">机器人接收消息后，这里会显示各群的情绪快照</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- User relations table -->
+    <section class="section" id="user-section" style="display: none">
+      <div class="section-head">
         <h2>用户关系</h2>
-        <div id="user-table"></div>
+        <span class="section-meta" id="user-count">—</span>
       </div>
+      <div class="users-table" id="users-table"></div>
     </section>
+
+    <footer class="footer">
+      <span id="footer-text">Emotion State Machine · 情绪状态机</span>
+      <span class="footer-spacer"></span>
+      <span id="last-update">—</span>
+    </footer>
   </main>
 </div>
 <script src="./app.js"></script>
