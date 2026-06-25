@@ -377,6 +377,9 @@ class EmotionStateMachine:
         group.last_signal = event.signal
         group.last_reason = event.reason or event.signal
         group.updated_at = float(event.timestamp)
+        # v0.9.12: dedicated timestamp for "real signal applied" —
+        # separate from updated_at (which decay also touches).
+        group.last_signal_at = float(event.timestamp)
         group.transitions += 1
         group.label = derive_group_label(group)
 
@@ -385,6 +388,8 @@ class EmotionStateMachine:
             relation.last_signal = event.signal
             relation.last_reason = event.reason or event.signal
             relation.updated_at = float(event.timestamp)
+            # v0.9.12: same dedicated timestamp for the relation layer
+            relation.last_signal_at = float(event.timestamp)
             relation.transitions += 1
             relation.label = derive_relation_label(relation)
 

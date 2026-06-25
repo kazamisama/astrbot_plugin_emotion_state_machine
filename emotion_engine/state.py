@@ -71,6 +71,11 @@ class GroupEmotionSnapshot:
     last_signal: str = "init"
     last_reason: str = "initialized"
     updated_at: float = field(default_factory=time.time)
+    # v0.9.12: dedicated timestamp for "last real signal applied",
+    # separate from updated_at (which decay also touches). Lets the
+    # WebUI tell "had a real signal recently" from "state was just
+    # refreshed internally by decay/prune".
+    last_signal_at: float = 0.0
     transitions: int = 0
     active_users: dict[str, float] = field(default_factory=dict)
 
@@ -95,6 +100,8 @@ class GroupEmotionSnapshot:
         self.curiosity = clamp(float(self.curiosity))
         self.transitions = max(0, int(self.transitions))
         self.updated_at = float(self.updated_at or time.time())
+        # v0.9.12: restore last_signal_at with backward-compat default
+        self.last_signal_at = float(self.last_signal_at or 0.0)
         self.active_users = {str(k): float(v) for k, v in (self.active_users or {}).items()}
         self.label = derive_group_label(self)
 
@@ -111,6 +118,8 @@ class UserRelationSnapshot:
     last_signal: str = "init"
     last_reason: str = "initialized"
     updated_at: float = field(default_factory=time.time)
+    # v0.9.12: dedicated timestamp for "real signal applied"
+    last_signal_at: float = 0.0
     transitions: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -133,6 +142,8 @@ class UserRelationSnapshot:
         self.familiarity = clamp(float(self.familiarity))
         self.transitions = max(0, int(self.transitions))
         self.updated_at = float(self.updated_at or time.time())
+        # v0.9.12: restore last_signal_at with backward-compat default
+        self.last_signal_at = float(self.last_signal_at or 0.0)
         self.label = derive_relation_label(self)
 
 
