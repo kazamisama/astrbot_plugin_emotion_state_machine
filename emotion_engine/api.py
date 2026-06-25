@@ -70,6 +70,7 @@ def get_full_state(machine: EmotionStateMachine) -> dict:
             "active_user_ids": list(group_snap.active_users.keys()),
             "last_signal": group_snap.last_signal,
             "last_reason": group_snap.last_reason,
+            "last_signal_at": round(group_snap.last_signal_at, 3),
             "updated_at": round(group_snap.updated_at, 3),
             "transitions": group_snap.transitions,
         }
@@ -85,6 +86,7 @@ def get_full_state(machine: EmotionStateMachine) -> dict:
                 "familiarity": round(rel_snap.familiarity, 3),
                 "last_signal": rel_snap.last_signal,
                 "last_reason": rel_snap.last_reason,
+                "last_signal_at": round(rel_snap.last_signal_at, 3),
                 "updated_at": round(rel_snap.updated_at, 3),
                 "transitions": rel_snap.transitions,
             })
