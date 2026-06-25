@@ -6,13 +6,17 @@
 
 本文档记录 ESM 插件接入 AstrBot Dashboard 全过程踩过的坑与最终稳定方案，供后续插件开发者参考。
 
+> **最新稳定版本**: v0.9.43
+> **覆盖范围**: v0.8.0 → v0.9.43
+
 ---
 
-## TL;DR — 三个关键发现
+## TL;DR — 四个关键发现
 
 1. **路由路径**：`register_web_api("/<plugin>/<endpoint>", ...)`，**不要**带 `/page` 前缀（即使目录叫 `pages/`）
 2. **stdout 不可见**：AstrBot v4.25 捕获所有 stdout，**只能用 `logger.warning()` 调试**
 3. **inline critical CSS**：iframe 里外部 CSS 链路太长，**关键样式必须 inline 在 `<style>` 标签里**
+4. **`window.confirm()` 被沙箱屏蔽**：AstrBot 的 iframe 没有 `allow-modals`，confirm/alert/prompt **全部静默丢弃**，必须用 DOM 弹窗或双击确认
 
 ---
 
@@ -214,6 +218,94 @@ async function apiGet(path) {
 ```
 
 ---
+
+## v0.9.x 新增踩坑
+
+### 坑 4：`window.confirm()` 被 iframe 沙箱静默丢弃（重点）
+
+| | |
+|---|---|
+| **症状** | 删除按钮的 `confirm("确定删除？")` 从不弹窗，也不报错，直接跳过 |
+| **真相** | AstrBot 的 plugin-page iframe 没有 `allow-modals` 权限，浏览器**静默丢弃**所有 confirm/alert/prompt 调用 |
+| **发现** | engram 的 v1.55 changelog 明确写了 `BUG-14: window.confirm() is suppressed by the AstrBot sandboxed iframe` |
+| **尝试 1** | 用 engram 的 `_confirmInline`（40 行 DOM 弹窗）→ **页面卡加载** |
+| **尝试 2** | 简化版 DOM 弹窗（innerHTML）→ **同样卡加载** |
+| **尝试 3** | 直接删除（无确认）→ ✅ 工作 |
+| **尝试 4** | 双击确认（点 × 变红→再点删除，3 秒超时）→ ✅ 工作 |
+| **最终方案** | **双击确认**——纯 JS，零 DOM 创建，零 innerHTML，零函数调用 |
+| **教训** | **任何复杂的 DOM 操作在 iframe 里都可能崩，用最简单的方案** |
+
+### 坑 5：cache-bust 忘记更新（JS 缓存永远不刷新）
+
+| | |
+|---|---|
+| **症状** | v0.9.16–v0.9.30 期间所有前端改动「都不生效」 |
+| **原因** | `index.html` 里 `src="./app.js?v=0.9.15"` 从 v0.9.16 开始就没变过 |
+| **影响** | 三维筛选、删除按钮、中文化标签、数值左移、紧凑模式——全部被浏览器缓存屏蔽 |
+| **发现** | v0.9.31 时才手动检查发现 |
+| **修复** | 每次改前端先 bump `?v=` 到当前版本号 |
+| **教训** | **改 App.js 必须同步改 cache-bust query param** |
+
+### 坑 6：`_scope_id` 是固定不变的
+
+| | |
+|---|---|
+| **症状** | 改了 persona 配置后老 scope 不跟着变 |
+| **原因** | scope_id 是**创建时**生成的（`unified_msg_origin:persona`），后续不会自动重命名 |
+| **后果** | v0.9.23 migration 把所有老 scope 永久烙印成 `:mortis` |
+| **修复** | migration 改成 dedup 双 stamp（`:sherri:mortis` → `:sherri`），老 scope 保持原样 |
+| **教训** | scope_id 一旦创建就固定，migration 要慎重——不要盲目追加 stamp |
+
+### 坑 7：后端路由 `<scope>` vs `<path:scope>`
+
+| | |
+|---|---|
+| **症状** | `POST /delete/<scope>` 不匹配带 `:` 的 scope 名 |
+| **修复** | 改成 `<path:scope>`（Werkzeug 匹配多段路径） |
+| **影响** | delete 和 state detail 两个端点 |
+
+### 坑 8：signal_count 显示群数
+
+| | |
+|---|---|
+| **症状** | 卡片「信号类型」一直显示 27（群数），实际应该是 13 |
+| **原因** | `/health` 里 `signal_count = len(machine.groups)` 写成了群数 |
+| **修复** | `signal_count = len(signal_names())` |
+
+### 坑 9：活跃群判定太严格
+
+| | |
+|---|---|
+| **症状** | 正常聊天但无信号的群被判为不活跃 |
+| **原因** | 旧 `observe_text` 无信号时直接 return，不更新 `active_users` |
+| **修复** | 每条消息都更新 `active_users` |
+| **默认窗口** | 从 5 分钟延长到 30 分钟（可配置 `active_window_seconds`） |
+
+### 坑 10：人格下拉显示会话类型
+
+| | |
+|---|---|
+| **症状** | 人格下拉出现 `GroupMessageSession`、`FriendMessageSession` |
+| **原因** | `splitScope` 用 `lastIndexOf(":")` 切老 scope（无 stamp 的），把 session 类型当 persona |
+| **修复** | v0.9.23 migration 给所有老 scope 加 stamp |
+
+### 坑 11：删除按钮事件绑定时常丢失
+
+| | |
+|---|---|
+| **症状** | 点了 × 没反应 |
+| **原因** | 多次回滚/编辑时，delBtns 的 `addEventListener` 被覆盖丢了（HTML 模板在，JS 绑定不在） |
+| **修复** | 每次改 app.js 后手动确认 delBtns 绑定还存在 |
+
+### 坑 12：persona 查找用了错误 API
+
+| | |
+|---|---|
+| **症状** | 所有 scope 都是 mortis，没人用 sherri |
+| **原因 1** | v0.9.24 用的 `persona_manager.default_persona` 只拿全局默认 |
+| **原因 2** | v0.9.25 用的 `resolve_selected_persona(conversation_persona_id=event.conversation.persona_id)` 但 event 上不挂 conversation |
+| **修复** | 照搬 engram 的 3-tier：`sp.get_async` → `conversation_manager.get_conversation(umo, cid)` → `get_default_persona_v3(umo)` |
+
 
 ## 核心架构回顾
 
