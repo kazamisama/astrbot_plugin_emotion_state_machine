@@ -56,7 +56,7 @@
   .mood-desc { font-size: 0.85rem; color: var(--text-2); margin-top: 4px; }
   .mood-pad { grid-column: 2; display: flex; flex-direction: column; gap: 8px; }
   .pad-row { display: flex; align-items: center; gap: 10px; }
-  .pad-label { width: 16px; font-weight: 700; font-size: 0.78rem; color: var(--text-3); text-align: center; }
+  .pad-label { width: 28px; font-weight: 700; font-size: 0.78rem; color: var(--text-3); text-align: center; cursor: help; }
   .pad-track { flex: 1; height: 8px; background: var(--border-soft); border-radius: 4px; overflow: hidden; }
   .pad-fill { height: 100%; background: var(--accent-grad); border-radius: 4px; transition: width .8s; }
   .pad-val { width: 36px; text-align: right; font-size: 0.75rem; color: var(--text-2); }
@@ -144,17 +144,17 @@
         </div>
         <div class="mood-pad">
           <div class="pad-row">
-            <span class="pad-label">P</span>
+            <span class="pad-label" title="Pleasure · 愉悦度" data-pad="P">愉悦</span>
             <div class="pad-track"><div class="pad-fill" id="pad-p" style="width: 0%"></div></div>
             <span class="pad-val" id="pad-p-v">0.00</span>
           </div>
           <div class="pad-row">
-            <span class="pad-label">A</span>
+            <span class="pad-label" title="Arousal · 唤醒度" data-pad="A">唤醒</span>
             <div class="pad-track"><div class="pad-fill" id="pad-a" style="width: 0%"></div></div>
             <span class="pad-val" id="pad-a-v">0.00</span>
           </div>
           <div class="pad-row">
-            <span class="pad-label">D</span>
+            <span class="pad-label" title="Dominance · 支配度" data-pad="D">支配</span>
             <div class="pad-track"><div class="pad-fill" id="pad-d" style="width: 0%"></div></div>
             <span class="pad-val" id="pad-d-v">0.00</span>
           </div>
