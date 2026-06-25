@@ -203,8 +203,13 @@
     var scopes = (fullState && fullState.scopes) || [];
     var totalUsers = 0;
     for (var i = 0; i < scopes.length; i++) totalUsers += scopes[i].users.length;
+    var activeScopes = 0;
+    for (var i = 0; i < scopes.length; i++) {
+      var g = scopes[i] && scopes[i].group;
+      if (g && (g.active_users || 0) > 0) activeScopes++;
+    }
     var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-    set("stat-scopes", scopes.length);
+    set("stat-scopes", activeScopes);
     set("stat-users", totalUsers);
     set("stat-signals", (h && h.signal_count) || "—");
     set("stat-version", (h && h.version) || "—");
@@ -219,6 +224,27 @@
     var grid = document.getElementById("groups-grid");
     var sel = document.getElementById("filter-scope");
     var visibleScopes = state && state.scopes ? state.scopes.filter(shouldShowGroup) : [];
+    // sort
+    var sortBy = document.getElementById("sort-by");
+    if (sortBy && sortBy.value) {
+      var sb = sortBy.value;
+      visibleScopes.sort(function(a, b) {
+        var g = a && a.group || {}, h = b && b.group || {};
+        if (sb === "time-desc")   return (h.last_signal_at || 0) - (g.last_signal_at || 0);
+        if (sb === "time-asc")    return (g.last_signal_at || 0) - (h.last_signal_at || 0);
+        if (sb === "active-desc") return (h.active_users || 0) - (g.active_users || 0);
+        if (sb === "active-asc")  return (g.active_users || 0) - (h.active_users || 0);
+        if (sb === "valence-desc")   return (h.valence || 0) - (g.valence || 0);
+        if (sb === "valence-asc")    return (g.valence || 0) - (h.valence || 0);
+        if (sb === "arousal-desc")   return (h.arousal || 0) - (g.arousal || 0);
+        if (sb === "arousal-asc")    return (g.arousal || 0) - (h.arousal || 0);
+        if (sb === "stress-asc")     return (g.stress || 0) - (h.stress || 0);
+        if (sb === "stress-desc")    return (h.stress || 0) - (g.stress || 0);
+        if (sb === "curiosity-desc") return (h.curiosity || 0) - (g.curiosity || 0);
+        if (sb === "curiosity-asc")  return (g.curiosity || 0) - (h.curiosity || 0);
+        return 0;
+      });
+    }
     if (!state || !state.scopes || !state.scopes.length) {
       grid.innerHTML =
         '<div class="empty">' +
@@ -390,7 +416,8 @@
         }
       }
       var userKeys = Object.keys(allUsers).sort();
-      userSel.innerHTML = '<option value="">所有用户</option>';
+      // Keep first option ("所有用户"), replace rest
+      while (userSel.options.length > 1) userSel.remove(1);
       for (var i2 = 0; i2 < userKeys.length; i2++) {
         var opt3 = document.createElement("option");
         opt3.value = userKeys[i2];
@@ -507,8 +534,13 @@
     });
     var filter = document.getElementById("filter-user");
     if (filter) filter.addEventListener("change", function() {
-      filterQ = filter.value || "";
+      filterQ = (filter.value || "").toLowerCase().trim();
+      renderGroups();
       showUserTable();
+    });
+    var sortSel = document.getElementById("sort-by");
+    if (sortSel) sortSel.addEventListener("change", function() {
+      renderGroups();
     });
     var btn = document.getElementById("refresh-btn");
     if (btn) btn.addEventListener("click", function() {
@@ -621,6 +653,13 @@
       var hasRecentSignal = g.last_signal_at && (now - g.last_signal_at) < activeWindowSeconds;
       if (g.last_signal_at === 0 || g.last_signal_at === undefined) hasRecentSignal = false;
       if (!hasActive && !hasRecentSignal) return false;
+    }
+    if (filterQ) {
+      var found = false;
+      for (var ui = 0; ui < (s.users || []).length; ui++) {
+        if ((s.users[ui].user_id || \"\").toLowerCase().indexOf(filterQ) !== -1) { found = true; break; }
+      }
+      if (!found) return false;
     }
     return true;
   }

@@ -55,16 +55,28 @@ def get_full_state(machine: EmotionStateMachine) -> dict:
     All floating-point values are rounded to 3 decimal places for
     compact JSON output.
     """
+    import math
+    _safe = lambda v: 0.0 if (isinstance(v, float) and not math.isfinite(v)) else v
+
     scopes = []
     for scope_name, group_snap in sorted(machine.groups.items()):
+        # Decay + prune *before* reading, consistent with get_group().
+        # Otherwise Dashboard shows stale active_users and un-pruned
+        # scope counts.
+        try:
+            machine.decay_group(scope_name)
+            machine._prune_relations(scope_name)
+            group_snap = machine.groups[scope_name]
+        except Exception:
+            pass  # keep the stale snapshot rather than failing the request
         p, a, d = compute_pad(group_snap)
         group = {
             "label": group_snap.label,
-            "valence": round(group_snap.valence, 3),
-            "arousal": round(group_snap.arousal, 3),
-            "stress": round(group_snap.stress, 3),
-            "curiosity": round(group_snap.curiosity, 3),
-            "pad": {"P": round(p, 3), "A": round(a, 3), "D": round(d, 3)},
+            "valence": round(_safe(group_snap.valence), 3),
+            "arousal": round(_safe(group_snap.arousal), 3),
+            "stress": round(_safe(group_snap.stress), 3),
+            "curiosity": round(_safe(group_snap.curiosity), 3),
+            "pad": {"P": round(_safe(p), 3), "A": round(_safe(a), 3), "D": round(_safe(d), 3)},
             "active_users": len(group_snap.active_users),
             # v0.9.33: list of active user_ids (for frontend highlight)
             "active_user_ids": list(group_snap.active_users.keys()),
@@ -80,10 +92,10 @@ def get_full_state(machine: EmotionStateMachine) -> dict:
             users.append({
                 "user_id": uid,
                 "label": rel_snap.label,
-                "trust": round(rel_snap.trust, 3),
-                "affection": round(rel_snap.affection, 3),
-                "irritation": round(rel_snap.irritation, 3),
-                "familiarity": round(rel_snap.familiarity, 3),
+                "trust": round(_safe(rel_snap.trust), 3),
+                "affection": round(_safe(rel_snap.affection), 3),
+                "irritation": round(_safe(rel_snap.irritation), 3),
+                "familiarity": round(_safe(rel_snap.familiarity), 3),
                 "last_signal": rel_snap.last_signal,
                 "last_reason": rel_snap.last_reason,
                 "last_signal_at": round(rel_snap.last_signal_at, 3),

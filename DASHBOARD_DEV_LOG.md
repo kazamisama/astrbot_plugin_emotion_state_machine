@@ -235,6 +235,28 @@ async function apiGet(path) {
 | **最终方案** | **双击确认**——纯 JS，零 DOM 创建，零 innerHTML，零函数调用 |
 | **教训** | **任何复杂的 DOM 操作在 iframe 里都可能崩，用最简单的方案** |
 
+#### 「正在加载 / 连接中」的终极诊断
+
+页面卡在「加载中 / 连接中」的状态判断只需要两步：
+
+**症状 A：topbar 正常显示了，但数据区一直 loading**
+→ JS 正常加载，CSS 正常，桥连上了，是 `load()` 没完成。
+→ 看 Console 有没有红色报错：`apiGet` 返回了啥。
+
+**症状 B：整个数据区是白屏（只有 topbar），状态一直是「连接中」**
+→ **JS 有语法错误**，整个脚本崩了。没有 `try/catch` 能兜住解析阶段错误。
+→ 检查最后一个改动：`{}` `()` 是否平衡、`"` 转义是否正确、是否有未闭合字符串。
+
+**症状 C：连 topbar 样式都没有，纯文本**
+→ CSS 没加载。检查 `styles.css` 是否被 AstrBot 的 asset_token 机制拦截（401/404）。
+
+**本次开发中最常见的触发模式**：
+- ❌ 在 IIFE 里定义 `_confirmInline` 函数（40 行 DOM 创建）→ 页面加载循环中某处抛异常 → 症状 B
+- ❌ 在 delete click handler 里写 `innerHTML = "<div style="...">"` → 转义问题 → 症状 B
+- ✅ 纯 JS 的双击确认（改按钮文字和样式，零 DOM 创建）→ 正常工作
+
+> **核心教训**: iframe 沙箱环境下，**任何 `createElement` / `innerHTML` / `appendChild` 都放在 click 事件里**，不要放在 IIFE 顶层或函数定义中。解析阶段崩溃没有 try/catch。
+
 ### 坑 5：cache-bust 忘记更新（JS 缓存永远不刷新）
 
 | | |
