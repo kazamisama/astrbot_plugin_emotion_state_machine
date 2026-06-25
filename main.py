@@ -793,22 +793,42 @@ class EmotionStateMachineStar(Star):
             # our routes actually landed. Using logger.warning (NOT print)
             # because AstrBot captures stdout and filters it out.
             try:
-                apis = self.context.registered_web_apis
                 _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
+                # v0.8.17: inspect WHAT Context class our plugin sees vs
+                # what the Dashboard reads from. Two different Context
+                # classes would explain our routes not landing in the
+                # Dashboard's list even though register() returned cleanly.
+                ctx = self.context
+                logger.warning(
+                    f"[emotion_state_machine] context class: "
+                    f"{ctx.__class__.__module__}.{ctx.__class__.__qualname__}, "
+                    f"ctx.id={id(ctx)}, "
+                    f"list.id={id(ctx.registered_web_apis)}, "
+                    f"list.cls={ctx.registered_web_apis.__class__.__name__}"
+                )
+                # Call register ourselves and check the list right after.
+                # If append() silently no-ops, list.id won't change.
+                before_count = len(ctx.registered_web_apis)
+                ctx.register_web_api(
+                    f"/{_PLUGIN_NAME}/page/diagtest",
+                    lambda: "ok",
+                    ["GET"],
+                    "diagnostic test",
+                )
+                after_count = len(ctx.registered_web_apis)
+                logger.warning(
+                    f"[emotion_state_machine] diagtest direct-register: "
+                    f"before={before_count}, after={after_count}, "
+                    f"diff={after_count - before_count}"
+                )
+                apis = ctx.registered_web_apis
                 our_paths = [
-                    r[0] for r in apis
-                    if r[0] and _PLUGIN_NAME in r[0]
+                    r[0] for r in apis if r[0] and _PLUGIN_NAME in r[0]
                 ]
                 logger.warning(
                     f"[emotion_state_machine] post-register: total_apis="
                     f"{len(apis)}, our_routes={len(our_paths)}: {our_paths}"
                 )
-                if not our_paths:
-                    logger.warning(
-                        f"[emotion_state_machine] WARNING: our 3 routes are "
-                        f"MISSING from registered_web_apis. "
-                        f"First 20 entries: {[r[0] for r in apis[:20]]}"
-                    )
             except Exception as diag_e:
                 logger.warning(
                     f"[emotion_state_machine] post-register dump failed: "
