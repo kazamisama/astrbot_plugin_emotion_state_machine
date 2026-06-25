@@ -782,39 +782,42 @@ class EmotionStateMachineStar(Star):
         try:
             from page_api import PluginPageApi
         except Exception as e:
-            print(f"[emotion_state_machine] page_api import failed: {e!r}")
+            logger.warning(
+                f"[emotion_state_machine] page_api import failed: {e!r}"
+            )
             return
         try:
             self._page_api = PluginPageApi(self)
             self._page_api.register_routes()
-            # v0.8.14: dump the global registered_web_apis list so we can
-            # see whether our 3 routes actually landed.
+            # v0.8.15: dump the global registered_web_apis list to verify
+            # our routes actually landed. Using logger.warning (NOT print)
+            # because AstrBot captures stdout and filters it out.
             try:
                 apis = self.context.registered_web_apis
-                ours = [
-                    r for r in apis
-                    if r[0].startswith(f"/{PLUGIN_NAME}/")
-                ] if False else [r for r in apis if PLUGIN_NAME in (r[0] or "")]
-                print(
-                    f"[emotion_state_machine] page_api registered OK. "
-                    f"total_apis={len(apis)}, "
-                    f"our_routes={len(ours)}: "
-                    f"{[r[0] for r in ours]}"
+                our_paths = [
+                    r[0] for r in apis
+                    if r[0] and PLUGIN_NAME in r[0]
+                ]
+                logger.warning(
+                    f"[emotion_state_machine] post-register: total_apis="
+                    f"{len(apis)}, our_routes={len(our_paths)}: {our_paths}"
                 )
-                if not ours:
-                    print(
+                if not our_paths:
+                    logger.warning(
                         f"[emotion_state_machine] WARNING: our 3 routes are "
-                        f"MISSING from registered_web_apis. The list contains: "
-                        f"{[r[0] for r in apis[:20]]}"
+                        f"MISSING from registered_web_apis. "
+                        f"First 20 entries: {[r[0] for r in apis[:20]]}"
                     )
             except Exception as diag_e:
-                print(
+                logger.warning(
                     f"[emotion_state_machine] post-register dump failed: "
                     f"{diag_e!r}"
                 )
         except Exception as e:
             self._page_api = None
-            print(f"[emotion_state_machine] page_api register failed: {e!r}")
+            logger.warning(
+                f"[emotion_state_machine] page_api register failed: {e!r}"
+            )
 
     async def terminate(self):
         self._save_state(force=True)
