@@ -405,22 +405,75 @@
     showUserTable();
   }
 
+  // v0.9.35: window.confirm() is suppressed by AstrBot's sandboxed
+  // iframe (no "allow-modals"). Build an in-DOM modal overlay instead.
+  // Mirrors engram's _confirmInline pattern (v1.55).
+  function _confirmInline(message, onYes, opts) {
+    opts = opts || {};
+    var yesLabel = opts.yesLabel || "确认";
+    var noLabel = opts.noLabel || "取消";
+    var danger = !!opts.danger;
+    var overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    var box = document.createElement("div");
+    box.className = "confirm-box" + (danger ? " danger" : "");
+    box.setAttribute("role", "dialog");
+    var msg = document.createElement("div");
+    msg.className = "confirm-msg";
+    msg.textContent = message;
+    var actions = document.createElement("div");
+    actions.className = "confirm-actions";
+    var yesBtn = document.createElement("button");
+    yesBtn.type = "button";
+    yesBtn.className = "confirm-btn confirm-yes" + (danger ? " danger" : "");
+    yesBtn.textContent = yesLabel;
+    var noBtn = document.createElement("button");
+    noBtn.type = "button";
+    noBtn.className = "confirm-btn confirm-no";
+    noBtn.textContent = noLabel;
+    actions.appendChild(noBtn);
+    actions.appendChild(yesBtn);
+    box.appendChild(msg);
+    box.appendChild(actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
+    function _esc(e) {
+      if (e.key === "Escape") { close(); document.removeEventListener("keydown", _esc); }
+    }
+    yesBtn.addEventListener("click", function () { close(); onYes(); });
+    noBtn.addEventListener("click", function () { close(); });
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay) close();
+    });
+    document.addEventListener("keydown", _esc);
+    setTimeout(function () { try { yesBtn.focus(); } catch (e2) {} }, 0);
+  }
+
   // v0.9.29: delete a scope (uses apiPost — bridge only supports GET/POST)
   async function scopeDelete(scopeName) {
-    setStatus("connecting", "删除中…");
-    try {
-      var b = getBridge();
-      if (!b) throw new Error("bridge unavailable");
-      await b.apiPost("delete/" + scopeName, {});
-      // Refresh everything after delete
-      if (activeScope && activeScope.scope === scopeName) {
-        activeScope = null;
-        renderHero(null);
-      }
-      await load();
-    } catch (e) {
-      setError("删除失败: " + (e.message || String(e)));
-    }
+    _confirmInline(
+      "确定删除会话 " + scopeName + " 吗？
+此操作不可恢复，该会话的情绪记录将被清空。",
+      async function () {
+        setStatus("connecting", "删除中…");
+        try {
+          var b = getBridge();
+          if (!b) throw new Error("bridge unavailable");
+          await b.apiPost("delete/" + scopeName, {});
+          if (activeScope && activeScope.scope === scopeName) {
+            activeScope = null;
+            renderHero(null);
+          }
+          await load();
+        } catch (e) {
+          setError("删除失败: " + (e.message || String(e)));
+        }
+      },
+      { danger: true, yesLabel: "删除" }
+    );
   }
 
   // ---- Status / errors ----
