@@ -4,10 +4,103 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ESM · 情绪状态机</title>
-<link rel="stylesheet" href="./styles.css?v=0.9.2">
+<style>
+  :root {
+    --accent: #6366f1;
+    --accent-2: #8b5cf6;
+    --accent-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    --accent-soft: #ede9fe;
+    --green: #10b981;
+    --green-soft: #d1fae5;
+    --amber: #f59e0b;
+    --amber-soft: #fef3c7;
+    --red: #ef4444;
+    --red-soft: #fee2e2;
+    --text: #1a1d24;
+    --text-2: #6b7280;
+    --text-3: #9ca3af;
+    --border: #e5e7eb;
+    --border-soft: #f1f3f5;
+    --card: #ffffff;
+    --bg-grad: linear-gradient(135deg, #f5f3ff 0%, #fafbff 35%, #fdf2f8 100%);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --radius: 14px;
+    --radius-lg: 20px;
+    --shadow-1: 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-2: 0 4px 12px rgba(15, 23, 42, 0.08);
+  }
+  body { margin: 0; font-family: var(--font); color: var(--text); font-size: 14px; line-height: 1.5; background: var(--bg-grad); background-attachment: fixed; min-height: 100vh; }
+  [data-theme="dark"] body { background: linear-gradient(135deg, #0b0d18 0%, #11132a 35%, #1a0d2a 100%); color: #e6e8f0; }
+  .app { max-width: 1280px; margin: 0 auto; padding: 0 28px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 24px 0 18px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-mark { width: 44px; height: 44px; display: grid; place-items: center; background: var(--accent-grad); color: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); transform: rotate(-3deg); }
+  .brand-text h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+  .brand-text p { margin: 2px 0 0; font-size: 0.78rem; color: var(--text-2); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .status-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; font-size: 0.8rem; color: var(--text-2); box-shadow: var(--shadow-1); }
+  .status-chip[data-state="ok"] { color: var(--green); }
+  .status-chip[data-state="error"] { color: var(--red); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  .status-chip[data-state="ok"] .status-dot { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); animation: pulse 2.4s ease-in-out infinite; }
+  .status-chip[data-state="connecting"] .status-dot { background: var(--amber); }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.45 } }
+  .icon-btn { width: 38px; height: 38px; display: grid; place-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text-2); cursor: pointer; box-shadow: var(--shadow-1); border-style: solid; border-width: 1px; }
+  .icon-btn:hover { color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-2); }
+  .content { padding-bottom: 60px; }
+  .hero { display: grid; grid-template-columns: 1.7fr 1fr; gap: 18px; margin-bottom: 24px; }
+  .hero-mood { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px 32px; display: grid; grid-template-columns: auto 1fr; gap: 24px 28px; box-shadow: var(--shadow-2); position: relative; overflow: hidden; }
+  .mood-orb { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, #c7d2fe 0%, #e9d5ff 100%); box-shadow: 0 8px 28px rgba(99, 102, 241, 0.25); grid-row: 1 / span 2; }
+  .mood-emoji { font-size: 52px; line-height: 1; }
+  .mood-label { font-size: 1.6rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; text-transform: capitalize; }
+  .mood-desc { font-size: 0.85rem; color: var(--text-2); margin-top: 4px; }
+  .mood-pad { grid-column: 2; display: flex; flex-direction: column; gap: 8px; }
+  .pad-row { display: flex; align-items: center; gap: 10px; }
+  .pad-label { width: 16px; font-weight: 700; font-size: 0.78rem; color: var(--text-3); text-align: center; }
+  .pad-track { flex: 1; height: 8px; background: var(--border-soft); border-radius: 4px; overflow: hidden; }
+  .pad-fill { height: 100%; background: var(--accent-grad); border-radius: 4px; transition: width .8s; }
+  .pad-val { width: 36px; text-align: right; font-size: 0.75rem; color: var(--text-2); }
+  .hero-side { display: grid; grid-template-rows: repeat(3, 1fr); gap: 10px; }
+  .side-stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; display: flex; align-items: center; box-shadow: var(--shadow-1); }
+  .side-stat-num { font-size: 1.5rem; font-weight: 700; color: var(--text); margin-right: 14px; }
+  .side-stat-label { font-size: 0.78rem; color: var(--text-2); }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-1); }
+  .stat-icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
+  .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+  .stat-label { font-size: 0.75rem; color: var(--text-2); margin-top: 2px; }
+  .section { margin-bottom: 28px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .section-head h2 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .input, .select { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-size: 0.85rem; font-family: inherit; }
+  .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .group-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-1); cursor: pointer; position: relative; }
+  .group-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--mood-color, var(--text-3)); }
+  .group-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+  .group-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .group-name { font-weight: 600; font-size: 0.95rem; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
+  .label-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; color: #fff; background: var(--mood-color, var(--text-3)); text-transform: capitalize; }
+  .dim-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .dim-label { width: 56px; font-size: 0.72rem; color: var(--text-2); text-align: right; }
+  .dim-bar-bg { flex: 1; height: 6px; background: var(--border-soft); border-radius: 3px; overflow: hidden; }
+  .dim-bar-fg { height: 100%; border-radius: 3px; }
+  .dim-val { width: 36px; text-align: right; font-size: 0.72rem; color: var(--text-2); }
+  .group-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); font-size: 0.75rem; color: var(--text-2); display: flex; justify-content: space-between; }
+  .group-users-count { color: var(--accent); font-weight: 600; }
+  .users-table { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-1); }
+  .users-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 0.8fr 1.2fr; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border-soft); font-size: 0.85rem; }
+  .users-row.head { background: var(--border-soft); font-size: 0.72rem; font-weight: 600; color: var(--text-2); text-transform: uppercase; }
+  .empty { text-align: center; padding: 60px 20px; background: var(--card); border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-2); }
+  .empty-illustration { font-size: 56px; margin-bottom: 12px; }
+  .empty-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .footer { display: flex; align-items: center; padding: 20px 0 8px; margin-top: 32px; font-size: 0.75rem; color: var(--text-3); border-top: 1px solid var(--border-soft); }
+  .footer-spacer { flex: 1; }
+</style>
+<link rel="stylesheet" href="./styles.css?v=0.9.4">
 </head>
 <body>
-<!-- ESM Dashboard v0.9.2 — NEW REDESIGN
+<!-- ESM Dashboard v0.9.4 — NEW REDESIGN (inline critical CSS)
      If you see this in DevTools, you're on the new HTML.
      If you DON'T see "v0.9.2", the browser/iframe cached an old version. -->
 <div class="app" id="app">
@@ -21,7 +114,7 @@
       </div>
       <div class="brand-text">
         <h1>Emotion State Machine</h1>
-        <p id="brand-sub">情绪状态机 · <span style="color: var(--accent); font-weight: 600;">v0.9.3</span></p>
+        <p id="brand-sub">情绪状态机 · <span style="color: var(--accent); font-weight: 600;">v0.9.4</span></p>
       </div>
     </div>
     <div class="topbar-right">
