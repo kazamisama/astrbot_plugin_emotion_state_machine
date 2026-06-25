@@ -794,9 +794,10 @@ class EmotionStateMachineStar(Star):
             # because AstrBot captures stdout and filters it out.
             try:
                 apis = self.context.registered_web_apis
+                _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
                 our_paths = [
                     r[0] for r in apis
-                    if r[0] and PLUGIN_NAME in r[0]
+                    if r[0] and _PLUGIN_NAME in r[0]
                 ]
                 logger.warning(
                     f"[emotion_state_machine] post-register: total_apis="
