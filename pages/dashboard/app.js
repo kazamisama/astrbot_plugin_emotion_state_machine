@@ -361,6 +361,28 @@
     }
     var tableEl = document.getElementById("users-table");
     if (tableEl) tableEl.innerHTML = html;
+    // v0.9.34: populate user filter dropdown from visible users
+    var userSel = document.getElementById("filter-user");
+    if (userSel) {
+      var prevUser = userSel.value;
+      var allUsers = {};
+      for (var si = 0; si < (state.scopes || []).length; si++) {
+        var ss = state.scopes[si];
+        for (var uj = 0; uj < (ss.users || []).length; uj++) {
+          var uid = ss.users[uj].user_id;
+          if (uid) allUsers[uid] = (allUsers[uid] || 0) + 1;
+        }
+      }
+      var userKeys = Object.keys(allUsers).sort();
+      userSel.innerHTML = '<option value="">所有用户</option>';
+      for (var i2 = 0; i2 < userKeys.length; i2++) {
+        var opt3 = document.createElement("option");
+        opt3.value = userKeys[i2];
+        opt3.textContent = userKeys[i2] + " · " + allUsers[userKeys[i2]] + " 个群";
+        userSel.appendChild(opt3);
+      }
+      if (prevUser) userSel.value = prevUser;
+    }
     var countEl = document.getElementById("user-count");
     if (countEl) countEl.textContent = totalUsers + " / " +
       scopes.reduce(function(a, s) { return a + s.users.length; }, 0) + " 个用户";
@@ -473,7 +495,7 @@
       renderGroups(); showUserTable();
     });
     var filter = document.getElementById("filter-user");
-    if (filter) filter.addEventListener("input", function() {
+    if (filter) filter.addEventListener("change", function() {
       filterQ = filter.value || "";
       showUserTable();
     });
