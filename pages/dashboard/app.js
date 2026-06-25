@@ -405,28 +405,16 @@
     showUserTable();
   }
 
-  // v0.9.37: minimal DOM confirm (window.confirm blocked by sandbox)
+  // v0.9.38: direct delete (confirm modal will be added later)
   async function scopeDelete(scopeName) {
-    var msg = "确定删除 " + scopeName + "？\n此操作不可恢复。";
-    var div = document.createElement("div");
-    div.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999";
-    div.innerHTML = '<div style="background:var(--card,white);padding:24px;border-radius:14px;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.2)"><p style="margin:0 0 16px;font-size:14px;white-space:pre-line;color:var(--text,#333)">' + esc(msg) + '</p><div style="display:flex;gap:10px;justify-content:flex-end"><button class="del-no" style="padding:7px 18px;border:1px solid var(--border,#ccc);border-radius:8px;background:var(--card,white);cursor:pointer">取消</button><button class="del-yes" style="padding:7px 18px;border:none;border-radius:8px;background:var(--red,#ef4444);color:#fff;cursor:pointer;font-weight:600">删除</button></div></div>';
-    document.body.appendChild(div);
-    var close = function() { document.body.removeChild(div); };
-    var run = async function() {
-      close();
-      setStatus("connecting", "删除中…");
-      try {
-        var b = getBridge();
-        if (!b) throw new Error("bridge unavailable");
-        await b.apiPost("delete/" + scopeName, {});
-        if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
-        await load();
-      } catch (e) { setError("删除失败: " + (e.message || String(e))); }
-    };
-    div.querySelector(".del-yes").onclick = run;
-    div.querySelector(".del-no").onclick = close;
-    div.onclick = function(e) { if (e.target === div) close(); };
+    setStatus("connecting", "删除中…");
+    try {
+      var b = getBridge();
+      if (!b) throw new Error("bridge unavailable");
+      await b.apiPost("delete/" + scopeName, {});
+      if (activeScope && activeScope.scope === scopeName) { activeScope = null; renderHero(null); }
+      await load();
+    } catch (e) { setError("删除失败: " + (e.message || String(e))); }
   }
 
   // ---- Status / errors ----
