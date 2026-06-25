@@ -129,9 +129,10 @@
   }
 
   function dimCellHTML(dim, val) {
+    // v0.9.18: val first, bar second (number on the left)
     return '<div class="dim-row">' +
-      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(dim, val) + '"></div></div>' +
       '<span class="dim-val">' + val.toFixed(2) + '</span>' +
+      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(dim, val) + '"></div></div>' +
     '</div>';
   }
 
