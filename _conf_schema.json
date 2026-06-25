@@ -73,10 +73,10 @@
         "choices": ["direct", "occ_static", "occ_heuristic"]
     },
     "persona_stamp": {
-        "description": "【v0.8.1】人格隔离标签",
-        "hint": "留空 = 同群所有人格共享情绪状态。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
+        "description": "【v0.8.1 / 默认开启 v0.9.22】人格隔离标签",
+        "hint": "v0.9.22 起默认开启：「default」。留空 = 同群所有人格共享情绪状态。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
         "type": "string",
-        "default": ""
+        "default": "default"
     },
     "disabled_signals": {
         "description": "【信号过滤】禁用的 signal 列表",

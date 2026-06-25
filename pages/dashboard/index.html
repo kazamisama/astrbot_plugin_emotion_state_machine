@@ -199,7 +199,7 @@
   .footer { display: flex; align-items: center; padding: 20px 0 8px; margin-top: 32px; font-size: 0.75rem; color: var(--text-3); border-top: 1px solid var(--border-soft); }
   .footer-spacer { flex: 1; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=0.9.17">
+<link rel="stylesheet" href="./styles.css?v=0.9.22">
 </head>
 <body>
 <!-- ESM Dashboard v0.9.4 — NEW REDESIGN (inline critical CSS)
@@ -368,10 +368,13 @@
       <div class="section-head">
         <h2>群聊状态</h2>
         <div class="section-tools">
-          <select id="scope-select" class="select">
+          <select id="filter-scope" class="select" title="按群聊过滤">
             <option value="">所有群聊</option>
           </select>
-          <input id="user-filter" class="input" type="text" placeholder="按用户 ID 搜索…">
+          <select id="filter-persona" class="select" title="按人格过滤">
+            <option value="">所有人格</option>
+          </select>
+          <input id="filter-user" class="input" type="text" placeholder="按用户 ID 搜索…">
         </div>
       </div>
       <div id="groups-grid" class="groups-grid">

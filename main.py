@@ -242,7 +242,7 @@ class EmotionStateMachineStar(Star):
 
     def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
-        stamp = self._cfg_str("persona_stamp", "")
+        stamp = self._cfg_str("persona_stamp", "default")
         return f"{base}:{stamp}" if stamp else base
 
     def _load_state(self) -> None:

@@ -23,6 +23,16 @@
     });
   }
 
+  // v0.9.22: split scope_id into [group, persona]
+  function splitScope(scopeId) {
+    var s = String(scopeId || "");
+    var idx = s.lastIndexOf(":");
+    if (idx < 0) return [s, ""];           // no stamp
+    // Some platform prefixes also contain ":" (e.g. "webchat:GroupMsg")
+    // so we split at the LAST ":" — that's the persona stamp position.
+    return [s.substring(0, idx), s.substring(idx + 1)];
+  }
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
       return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
@@ -137,7 +147,11 @@
   }
 
   // ---- API helpers ----
-  var state = null, activeScope = null, filterQ = "";
+  var state = null, activeScope = null;
+  // v0.9.22: three independent filters (scope / persona / user)
+  var filterQ = "";        // user_id substring
+  var scopeFilter = "";    // exact scope name match
+  var personaFilter = "";   // exact persona stamp match (after ":")
   async function apiGet(path) {
     var b = getBridge();
     if (!b) throw new Error("bridge unavailable");
@@ -203,7 +217,7 @@
   // ---- Render: groups grid ----
   function renderGroups() {
     var grid = document.getElementById("groups-grid");
-    var sel = document.getElementById("scope-select");
+    var sel = document.getElementById("filter-scope");
     var visibleScopes = state && state.scopes ? state.scopes.filter(shouldShowGroup) : [];
     if (!state || !state.scopes || !state.scopes.length) {
       grid.innerHTML =
@@ -261,6 +275,28 @@
       sel.appendChild(opt);
     }
     if (prev) sel.value = prev;
+
+    // v0.9.22: also populate persona dropdown from scope suffixes
+    var personaSel = document.getElementById("filter-persona");
+    if (personaSel) {
+      var prevP = personaSel.value;
+      var personas = {};
+      for (var k2 = 0; k2 < state.scopes.length; k2++) {
+        var parts = splitScope(state.scopes[k2].scope);
+        var p = parts[1] || "(无 stamp)";
+        personas[p] = (personas[p] || 0) + 1;
+      }
+      var keys = Object.keys(personas).sort();
+      personaSel.innerHTML = '<option value="">所有人格</option>';
+      for (var i = 0; i < keys.length; i++) {
+        var opt2 = document.createElement("option");
+        opt2.value = keys[i];
+        opt2.textContent = keys[i] + " · " + personas[keys[i]] + " 个群";
+        personaSel.appendChild(opt2);
+      }
+      if (prevP) personaSel.value = prevP;
+      personaFilter = personaSel.value || "";
+    }
   }
 
   // ---- User table ----
@@ -287,7 +323,14 @@
       var s = scopes[i];
       // If a specific group is active, optionally narrow the scope
       // when the filter is empty. With a filter, search everywhere.
-      if (activeScope && !q && s.scope !== activeScope.scope) continue;
+      // v0.9.22: three-way filter (scope / persona / user)
+    if (scopeFilter && s.scope !== scopeFilter) continue;
+    var parts = splitScope(s.scope);
+    if (personaFilter) {
+      var p = parts[1] || "(无 stamp)";
+      if (p !== personaFilter) continue;
+    }
+    if (activeScope && !q && s.scope !== activeScope.scope) continue;
       for (var j = 0; j < s.users.length; j++) {
         var u = s.users[j];
         if (q && u.user_id.toLowerCase().indexOf(q) === -1) continue;
@@ -397,13 +440,19 @@
   // ---- Wire events ----
   function bindEvents() {
     bindSettingsMenu();
-    var sel = document.getElementById("scope-select");
+    var sel = document.getElementById("filter-scope");
     if (sel) sel.addEventListener("change", function() {
-      var v = sel.value;
+      scopeFilter = sel.value || "";
+      var v = scopeFilter;
       if (v) showGroup(v);
       else { activeScope = null; renderHero(null); renderGroups(); showUserTable(); }
     });
-    var filter = document.getElementById("user-filter");
+    var personaSel = document.getElementById("filter-persona");
+    if (personaSel) personaSel.addEventListener("change", function() {
+      personaFilter = personaSel.value || "";
+      showUserTable();
+    });
+    var filter = document.getElementById("filter-user");
     if (filter) filter.addEventListener("input", function() {
       filterQ = filter.value || "";
       showUserTable();
