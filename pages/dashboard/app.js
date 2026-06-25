@@ -568,6 +568,13 @@
   // "Active" = has at least one of: active_users > 0, last_signal set,
   // transitions > 0. OR logic (any one counts).
   function shouldShowGroup(s) {
+    // v0.9.31: apply all three dropdown filters to group cards
+    if (scopeFilter && s.scope !== scopeFilter) return false;
+    if (personaFilter) {
+      var parts = splitScope(s.scope);
+      var p = parts[1] || "(无 stamp)";
+      if (p !== personaFilter) return false;
+    }
     if (settings.filterBot && hiddenScopePatterns.length) {
       var sid = (s.scope || "").toLowerCase();
       for (var i = 0; i < hiddenScopePatterns.length; i++) {
@@ -576,11 +583,11 @@
     }
     if (settings.nonemptyOnly) {
       var g = s.group || {};
-      var hasActive = g.active_users > 0;
-      var hasSignal = g.last_signal && g.last_signal !== "—" && g.last_signal !== "";
-      var hasTransition = (g.transitions || 0) > 0;
-      // Hide if NONE of these are true
-      if (!hasActive && !hasSignal && !hasTransition) return false;
+      var now = Date.now() / 1000;
+      var hasActive = (g.active_users || 0) > 0;
+      var hasRecentSignal = g.last_signal_at && (now - g.last_signal_at) < activeWindowSeconds;
+      if (g.last_signal_at === 0 || g.last_signal_at === undefined) hasRecentSignal = false;
+      if (!hasActive && !hasRecentSignal) return false;
     }
     return true;
   }
