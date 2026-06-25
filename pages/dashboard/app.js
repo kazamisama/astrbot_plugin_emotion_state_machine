@@ -513,10 +513,16 @@
     if (settings.activeOnly) {
       if (!u.last_signal || u.last_signal === "—") return false;
     }
-    if (settings.filterBot && hiddenUserIds.length) {
+    if (settings.filterBot) {
       var uid = (u.user_id || "").toLowerCase();
-      for (var i = 0; i < hiddenUserIds.length; i++) {
-        if (uid === hiddenUserIds[i] || uid.indexOf(hiddenUserIds[i]) !== -1) return false;
+      // v0.9.17: match against BOTH hiddenUserIds (e.g. "webchat")
+      // AND hiddenScopePatterns (e.g. "webchat:") since bot user_ids
+      // on AstrBot typically carry the platform prefix that matches
+      // the scope pattern.
+      var all = hiddenUserIds.concat(hiddenScopePatterns);
+      for (var i = 0; i < all.length; i++) {
+        if (!all[i]) continue;
+        if (uid === all[i] || uid.indexOf(all[i]) !== -1) return false;
       }
     }
     return true;

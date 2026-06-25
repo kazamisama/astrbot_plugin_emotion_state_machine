@@ -179,8 +179,8 @@
   .group-name { font-weight: 600; font-size: 0.95rem; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
   .label-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; color: #fff; background: var(--mood-color, var(--text-3)); text-transform: capitalize; }
   .dim-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-  /* v0.9.16: user table val hugs the bar end tightly */
-  .users-row .dim-row { gap: 4px; margin: 0; justify-content: flex-start; }
+  /* v0.9.17: even tighter gap (2px) */
+  .users-row .dim-row { gap: 2px; margin: 0; justify-content: flex-start; }
   .users-row .dim-bar-bg { flex: 1 1 0; min-width: 30px; }
   .users-row .dim-val { width: auto; min-width: 22px; flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
   .dim-label { width: 56px; font-size: 0.72rem; color: var(--text-2); text-align: right; }
@@ -199,7 +199,7 @@
   .footer { display: flex; align-items: center; padding: 20px 0 8px; margin-top: 32px; font-size: 0.75rem; color: var(--text-3); border-top: 1px solid var(--border-soft); }
   .footer-spacer { flex: 1; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=0.9.16">
+<link rel="stylesheet" href="./styles.css?v=0.9.17">
 </head>
 <body>
 <!-- ESM Dashboard v0.9.4 — NEW REDESIGN (inline critical CSS)
