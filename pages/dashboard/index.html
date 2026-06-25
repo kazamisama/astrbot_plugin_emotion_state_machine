@@ -138,9 +138,9 @@
   body.opt-compact .dim-label { font-size: 0.65rem; width: 36px; }
   body.opt-compact .dim-bar-bg { height: 4px; }
   body.opt-compact .dim-val { font-size: 0.65rem; width: 28px; }
-  /* v0.9.15: tighter table cells in compact mode too */
-  body.opt-compact .users-row .dim-row { gap: 2px; }
-  body.opt-compact .users-row .dim-val { width: 22px; }
+  /* v0.9.16: compact-mode table cells */
+  body.opt-compact .users-row .dim-row { gap: 3px; }
+  body.opt-compact .users-row .dim-val { min-width: 18px; }
   body.opt-compact .group-meta { margin-top: 8px; padding-top: 8px; font-size: 0.65rem; }
   body.opt-compact .users-row { padding: 6px 10px; font-size: 0.7rem; }
   body.opt-compact .users-row.head { font-size: 0.6rem; }
@@ -179,8 +179,10 @@
   .group-name { font-weight: 600; font-size: 0.95rem; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
   .label-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; color: #fff; background: var(--mood-color, var(--text-3)); text-transform: capitalize; }
   .dim-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-  /* v0.9.15: tighter spacing for user table cells (only bar + val, no label) */
-  .users-row .dim-row { gap: 3px; margin: 0; }
+  /* v0.9.16: user table val hugs the bar end tightly */
+  .users-row .dim-row { gap: 4px; margin: 0; justify-content: flex-start; }
+  .users-row .dim-bar-bg { flex: 1 1 0; min-width: 30px; }
+  .users-row .dim-val { width: auto; min-width: 22px; flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
   .dim-label { width: 56px; font-size: 0.72rem; color: var(--text-2); text-align: right; }
   .dim-bar-bg { flex: 1; height: 6px; background: var(--border-soft); border-radius: 3px; overflow: hidden; }
   .dim-bar-fg { height: 100%; border-radius: 3px; }
@@ -197,7 +199,7 @@
   .footer { display: flex; align-items: center; padding: 20px 0 8px; margin-top: 32px; font-size: 0.75rem; color: var(--text-3); border-top: 1px solid var(--border-soft); }
   .footer-spacer { flex: 1; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=0.9.15">
+<link rel="stylesheet" href="./styles.css?v=0.9.16">
 </head>
 <body>
 <!-- ESM Dashboard v0.9.4 — NEW REDESIGN (inline critical CSS)
