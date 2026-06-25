@@ -158,6 +158,7 @@
   function renderGroups() {
     var grid = document.getElementById("groups-grid");
     var sel = document.getElementById("scope-select");
+    var visibleScopes = state && state.scopes ? state.scopes.filter(shouldShowGroup) : [];
     if (!state || !state.scopes || !state.scopes.length) {
       grid.innerHTML =
         '<div class="empty">' +
@@ -169,8 +170,8 @@
       return;
     }
     var html = "";
-    for (var i = 0; i < state.scopes.length; i++) {
-      var s = state.scopes[i];
+    for (var i = 0; i < visibleScopes.length; i++) {
+      var s = visibleScopes[i];
       var m = moodStyle(s.group.label);
       var active = (activeScope && activeScope.scope === s.scope) ? " active" : "";
       html +=
@@ -245,6 +246,7 @@
       for (var j = 0; j < s.users.length; j++) {
         var u = s.users[j];
         if (q && u.user_id.toLowerCase().indexOf(q) === -1) continue;
+        if (!shouldShowUser(u)) continue;
         var m = moodStyle(u.label);
         var scopeTag = activeScope ? "" : (' <span style="color:var(--text-3);font-size:0.7rem">@' + esc(s.scope) + '</span>');
         html += '<div class="users-row">' +
@@ -333,6 +335,7 @@
 
   // ---- Wire events ----
   function bindEvents() {
+    bindSettingsMenu();
     var sel = document.getElementById("scope-select");
     if (sel) sel.addEventListener("change", function() {
       var v = sel.value;
@@ -360,8 +363,90 @@
     }
   }
 
+  // ---- Settings (v0.9.8) ----
+  var SETTINGS_KEY = "esm_dashboard_settings_v1";
+  var settings = {
+    hideVersion: false,
+    activeOnly: false,
+    compact: false,
+    nonemptyOnly: false,
+  };
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        for (var k in settings) if (k in s) settings[k] = s[k];
+      }
+    } catch (e) {}
+  }
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+  function applySettingsToBody() {
+    var b = document.body;
+    b.classList.toggle("opt-hide-version", !!settings.hideVersion);
+    b.classList.toggle("opt-compact", !!settings.compact);
+  }
+  function bindSettingsMenu() {
+    var btn = document.getElementById("settings-btn");
+    var menu = document.getElementById("settings-menu");
+    var wrap = document.getElementById("settings-wrap");
+    if (!btn || !menu) return;
+
+    // Sync checkboxes with current settings
+    var map = {
+      "opt-hide-version": "hideVersion",
+      "opt-active-only": "activeOnly",
+      "opt-compact": "compact",
+      "opt-nonempty-only": "nonemptyOnly",
+    };
+    Object.keys(map).forEach(function(id) {
+      var cb = document.getElementById(id);
+      if (cb) cb.checked = !!settings[map[id]];
+    });
+
+    btn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener("click", function(e) {
+      if (wrap && !wrap.contains(e.target)) menu.hidden = true;
+    });
+
+    Object.keys(map).forEach(function(id) {
+      var cb = document.getElementById(id);
+      if (!cb) return;
+      cb.addEventListener("change", function() {
+        settings[map[id]] = cb.checked;
+        applySettingsToBody();
+        saveSettings();
+        // Re-render to apply filter
+        renderGroups();
+        showUserTable();
+      });
+    });
+    applySettingsToBody();
+  }
+
+  // Apply active-only and nonempty-only filters
+  function shouldShowGroup(s) {
+    if (settings.nonemptyOnly) {
+      var g = s.group || {};
+      if (g.active_users === 0 && (!g.last_signal || g.last_signal === "—")) return false;
+    }
+    return true;
+  }
+  function shouldShowUser(u) {
+    if (settings.activeOnly) {
+      if (!u.last_signal || u.last_signal === "—") return false;
+    }
+    return true;
+  }
+
   // ---- Init ----
   bindEvents();
+  loadSettings();
 
   // Show a fallback error in the groups grid if the bridge is
   // missing, so the user sees a clear message instead of a blank
