@@ -1019,12 +1019,15 @@ class EmotionStateMachineStar(Star):
                 f"/{_PLUGIN_NAME}/state", full_state, ["GET"], "ESM state",
             )
             self.context.register_web_api(
-                f"/{_PLUGIN_NAME}/state/<scope>", scope_detail,
+                f"/{_PLUGIN_NAME}/state/<path:scope>", scope_detail,
                 ["GET"], "ESM single scope detail",
             )
-            # v0.9.29: delete a scope via POST (bridge only supports GET/POST)
+            # v0.9.32: use <path:scope> — scope names contain ":" which
+            # Werkzeug treats as path separators. <path:> captures
+            # multi-segment values (matches engram's pattern of
+            # reading the scope from the JSON body instead).
             self.context.register_web_api(
-                f"/{_PLUGIN_NAME}/delete/<scope>", scope_delete,
+                f"/{_PLUGIN_NAME}/delete/<path:scope>", scope_delete,
                 ["POST"], "Delete a scope and its relations",
             )
         except Exception as e:
