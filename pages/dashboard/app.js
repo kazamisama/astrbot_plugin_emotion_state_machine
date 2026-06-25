@@ -270,10 +270,9 @@
       return;
     }
     sec.style.display = "";
-    // v0.9.5: filter always searches across ALL groups (ignore
-    // activeScope), so a search like "alice" finds her regardless of
-    // which group card the user previously clicked.
-    var scopes = state.scopes;
+    // v0.9.18: apply shouldShowGroup so users from filtered scopes
+    // (e.g. webchat: sessions) are also hidden when filterBot is on.
+    var scopes = state.scopes.filter(shouldShowGroup);
     var html = '<div class="users-row head">' +
       '<div>用户 ID</div><div>' + esc(dimLabel("trust")) + '</div>' +
       '<div>' + esc(dimLabel("affection")) + '</div>' +
@@ -293,7 +292,13 @@
         if (q && u.user_id.toLowerCase().indexOf(q) === -1) continue;
         if (!shouldShowUser(u)) continue;
         var m = moodStyle(u.label);
-        var scopeTag = activeScope ? "" : (' <span style="color:var(--text-3);font-size:0.7rem">@' + esc(s.scope) + '</span>');
+        var scopeTag = "";
+        if (!activeScope) {
+          // v0.9.18: truncate long scope names with full name in tooltip
+          var sc = s.scope || "";
+          var shortSc = sc.length > 14 ? sc.slice(0, 12) + "…" : sc;
+          scopeTag = ' <span style="color:var(--text-3);font-size:0.7rem" title="' + esc(sc) + '">@' + esc(shortSc) + '</span>';
+        }
         html += '<div class="users-row">' +
           '<div class="user-id" title="' + esc(u.user_id) + '">' + esc(u.user_id) + scopeTag + '</div>' +
           '<div>' + dimCellHTML("trust", u.trust) + '</div>' +
