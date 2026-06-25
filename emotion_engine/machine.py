@@ -413,8 +413,25 @@ class EmotionStateMachine:
         ``disabled_signals``, when provided, is a set of lowercased signal
         names that must be filtered out before application. Passing
         ``None`` (the default) means no filtering.
+
+        v0.9.19: even when no signal is inferred (plain chat like "hi",
+        "ok"), we still update ``active_users`` so the frontend's
+        "active group" detection counts message activity, not just
+        signal events. Without this, a normally active group with no
+        signal triggers would incorrectly appear "inactive".
         """
         now = time.time() if timestamp is None else float(timestamp)
+        normalized_user = normalize_user_id(user_id) if user_id else ""
+        scope = normalize_scope(scope)
+        group = self.get_group(scope, now=now, apply_decay=True)
+        if normalized_user:
+            # v0.9.19: touch active_users on every message, not only on
+            # signal application. Without this, groups with no inferred
+            # signals look "inactive" even with live chat.
+            group.active_users[normalized_user] = float(now)
+            prune_active_users(
+                group.active_users, float(now), self.active_window_seconds
+            )
         signals = infer_signals(text, mentioned=mentioned)
         if disabled_signals:
             signals = [
@@ -422,7 +439,10 @@ class EmotionStateMachine:
                 if sig.lower() not in disabled_signals
             ]
         if not signals:
-            return self.get_combined(scope, user_id, now=now, apply_decay=True)
+            return CombinedEmotionView(
+                scope=scope, user_id=normalized_user,
+                group=group, relation=None,
+            )
 
         view: CombinedEmotionView | None = None
         for signal, reason in signals:
@@ -431,7 +451,9 @@ class EmotionStateMachine:
                 user_id,
                 EmotionEvent(signal=signal, intensity=1.0, reason=reason, timestamp=now),
             )
-        return view if view is not None else self.get_combined(scope, user_id, now=now, apply_decay=True)
+        return view if view is not None else CombinedEmotionView(
+            scope=scope, user_id=normalized_user, group=group, relation=None,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict.
