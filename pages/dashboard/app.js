@@ -469,7 +469,8 @@
     var personaSel = document.getElementById("filter-persona");
     if (personaSel) personaSel.addEventListener("change", function() {
       personaFilter = personaSel.value || "";
-      showUserTable();
+      activeScope = null; renderHero(null);
+      renderGroups(); showUserTable();
     });
     var filter = document.getElementById("filter-user");
     if (filter) filter.addEventListener("input", function() {
