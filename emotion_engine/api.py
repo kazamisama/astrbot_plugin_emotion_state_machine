@@ -66,6 +66,8 @@ def get_full_state(machine: EmotionStateMachine) -> dict:
             "curiosity": round(group_snap.curiosity, 3),
             "pad": {"P": round(p, 3), "A": round(a, 3), "D": round(d, 3)},
             "active_users": len(group_snap.active_users),
+            # v0.9.33: list of active user_ids (for frontend highlight)
+            "active_user_ids": list(group_snap.active_users.keys()),
             "last_signal": group_snap.last_signal,
             "last_reason": group_snap.last_reason,
             "updated_at": round(group_snap.updated_at, 3),

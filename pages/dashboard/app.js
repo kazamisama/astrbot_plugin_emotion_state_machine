@@ -246,7 +246,7 @@
           dimBarHTML("stress", s.group.stress) +
           dimBarHTML("curiosity", s.group.curiosity) +
           '<div class="group-meta">' +
-            '<span class="group-users-count">' + s.users.length + ' 用户</span>' +
+            '<span class="group-users-count" title="' + s.group.active_users + ' 活跃 / ' + s.users.length + ' 总计">' + (s.group.active_users > 0 ? '● ' + s.group.active_users + ' 活跃' : '○ ' + s.users.length + ' 用户') + '</span>' +
             '<span title="最后被动更新 ' + timeAgo(s.group.last_signal_at) + '">' + esc(signalZh(s.group.last_signal) || "—") + ' · ' + esc(timeAgo(s.group.last_signal_at)) + '</span>' +
           '</div>' +
         '</div>';
