@@ -264,6 +264,18 @@
         });
       })(cards[j]);
     }
+    // v0.9.38: wire delete buttons (stopPropagation so card click doesn't fire too)
+    var delBtns = grid.querySelectorAll(".del-btn");
+    for (var k = 0; k < delBtns.length; k++) {
+      (function(btn) {
+        btn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          var scope = btn.getAttribute("data-scope");
+          if (!scope) return;
+          scopeDelete(scope);
+        });
+      })(delBtns[k]);
+    }
 
     // select options
     var prev = sel.value;
