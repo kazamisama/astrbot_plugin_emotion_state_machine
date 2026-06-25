@@ -110,7 +110,7 @@ class EmotionStateMachineStar(Star):
         self.state_path = self._resolve_state_path()
         self.machine = EmotionStateMachine(
             decay_half_life_seconds=self._cfg_float("decay_half_life_seconds", 900.0, 1.0),
-            active_window_seconds=self._cfg_float("active_window_seconds", 300.0, 1.0),
+            active_window_seconds=self._cfg_float("active_window_seconds", 1800.0, 1.0),
             relation_ttl_seconds=self._cfg_float("relation_ttl_seconds", 604800.0, 1.0),
             group_ttl_seconds=self._cfg_float("group_ttl_seconds", 2592000.0, 1.0),
             dilution_exponent=self._cfg_float("dilution_exponent", 0.5, 0.0),

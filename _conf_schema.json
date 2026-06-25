@@ -96,5 +96,11 @@
         "hint": "逗号分隔，例如 webchat:。WebUI 设置里勾「过滤 webchat 会话」时即应用此列表（子串匹配，不区分大小写）。",
         "type": "string",
         "default": "webchat:"
+    },
+    "active_window_seconds": {
+        "description": "【v0.9.20】活跃判定窗口（秒）",
+        "hint": "群最后消息距今多久算「活跃」。默认 1800 (30 分钟)。正常对话间隙通常 < 30 分钟；如果你希望更宽松可以改成 3600 (1 小时) 或 7200 (2 小时)。",
+        "type": "int",
+        "default": 1800
     }
 }
