@@ -264,7 +264,7 @@
         });
       })(cards[j]);
     }
-    // v0.9.42: delete button with inline confirm (no function, no modal helper)
+    // v0.9.43: double-click confirm (no DOM creation, no innerHTML)
     var delBtns = grid.querySelectorAll(".del-btn");
     for (var k = 0; k < delBtns.length; k++) {
       (function(btn) {
@@ -272,14 +272,11 @@
           e.stopPropagation();
           var scope = btn.getAttribute("data-scope");
           if (!scope) return;
-          // Inline confirm: create overlay, show it, handle yes/no inline
-          var ov = document.createElement("div");
-          ov.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:999999";
-          ov.innerHTML = "<div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px;max-width:380px;box-shadow:0 12px 32px rgba(0,0,0,.15)"><p style="margin:0 0 20px;font-size:15px;color:#1a1d24">删除会话 " + esc(scope) + "？</p><div style="display:flex;justify-content:flex-end;gap:10px"><button class="c-no" style="padding:8px 20px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#6b7280;cursor:pointer;font-size:14px">取消</button><button class="c-yes" style="padding:8px 20px;border:none;border-radius:8px;background:#ef4444;color:#fff;cursor:pointer;font-size:14px;font-weight:600">删除</button></div></div>";
-          document.body.appendChild(ov);
-          ov.querySelector(".c-yes").onclick = function() { document.body.removeChild(ov); scopeDelete(scope); };
-          ov.querySelector(".c-no").onclick = function() { document.body.removeChild(ov); };
-          ov.onclick = function(ev) { if (ev.target === ov) document.body.removeChild(ov); };
+          if (btn._confirming) { btn._confirming = false; btn.style.color = ""; scopeDelete(scope); return; }
+          btn._confirming = true;
+          btn.style.color = "var(--red)";
+          btn.textContent = "确认?";
+          setTimeout(function() { btn._confirming = false; btn.style.color = ""; btn.textContent = "\u00d7"; }, 3000);
         });
       })(delBtns[k]);
     }
