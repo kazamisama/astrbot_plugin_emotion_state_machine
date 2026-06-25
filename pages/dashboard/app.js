@@ -52,6 +52,19 @@
     return MOOD_STYLE[String(label).toLowerCase()] || MOOD_STYLE.neutral;
   }
 
+  // v0.9.5: Chinese labels for emotion dimensions
+  var DIM_LABEL = {
+    valence:    "愉悦",
+    arousal:    "唤醒",
+    stress:     "压力",
+    curiosity:  "好奇",
+    trust:      "信任",
+    affection:  "好感",
+    irritation: "烦躁",
+    familiarity:"熟悉",
+  };
+  function dimLabel(key) { return DIM_LABEL[key] || key; }
+
   function barColor(dim, val) {
     if (dim === "stress" || dim === "irritation")
       return val > 0.6 ? "var(--red)" : "var(--amber)";
@@ -62,10 +75,10 @@
     return "var(--accent)";
   }
 
-  function dimBarHTML(label, val) {
+  function dimBarHTML(key, val) {
     return '<div class="dim-row">' +
-      '<span class="dim-label">' + esc(label) + '</span>' +
-      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(label, val) + '"></div></div>' +
+      '<span class="dim-label">' + esc(dimLabel(key)) + '</span>' +
+      '<div class="dim-bar-bg"><div class="dim-bar-fg" style="width:' + (val*100|0) + '%;background:' + barColor(key, val) + '"></div></div>' +
       '<span class="dim-val">' + val.toFixed(2) + '</span>' +
     '</div>';
   }
@@ -211,21 +224,31 @@
       return;
     }
     sec.style.display = "";
-    var scopes = activeScope ? [activeScope] : state.scopes;
+    // v0.9.5: filter always searches across ALL groups (ignore
+    // activeScope), so a search like "alice" finds her regardless of
+    // which group card the user previously clicked.
+    var scopes = state.scopes;
     var html = '<div class="users-row head">' +
-      '<div>用户 ID</div><div>trust</div><div>affection</div>' +
-      '<div>irritation</div><div>familiarity</div><div>label</div><div>最近信号</div>' +
+      '<div>用户 ID</div><div>' + esc(dimLabel("trust")) + '</div>' +
+      '<div>' + esc(dimLabel("affection")) + '</div>' +
+      '<div>' + esc(dimLabel("irritation")) + '</div>' +
+      '<div>' + esc(dimLabel("familiarity")) + '</div>' +
+      '<div>标签</div><div>最近信号</div>' +
       '</div>';
     var totalUsers = 0;
-    var q = filterQ.toLowerCase();
+    var q = (filterQ || "").toLowerCase().trim();
     for (var i = 0; i < scopes.length; i++) {
       var s = scopes[i];
+      // If a specific group is active, optionally narrow the scope
+      // when the filter is empty. With a filter, search everywhere.
+      if (activeScope && !q && s.scope !== activeScope.scope) continue;
       for (var j = 0; j < s.users.length; j++) {
         var u = s.users[j];
         if (q && u.user_id.toLowerCase().indexOf(q) === -1) continue;
         var m = moodStyle(u.label);
+        var scopeTag = activeScope ? "" : (' <span style="color:var(--text-3);font-size:0.7rem">@' + esc(s.scope) + '</span>');
         html += '<div class="users-row">' +
-          '<div class="user-id" title="' + esc(u.user_id) + '">' + esc(u.user_id) + '</div>' +
+          '<div class="user-id" title="' + esc(u.user_id) + '">' + esc(u.user_id) + scopeTag + '</div>' +
           '<div>' + dimCellHTML("trust", u.trust) + '</div>' +
           '<div>' + dimCellHTML("affection", u.affection) + '</div>' +
           '<div>' + dimCellHTML("irritation", u.irritation) + '</div>' +
@@ -237,10 +260,10 @@
       }
     }
     if (totalUsers === 0) {
-      html += '<div class="users-empty">没有匹配的用户</div>';
+      html += '<div class="users-empty">没有匹配的用户' + (q ? '（关键字: ' + esc(filterQ) + '）' : '') + '</div>';
     }
     var tableEl = document.getElementById("users-table");
-    tableEl.innerHTML = html;
+    if (tableEl) tableEl.innerHTML = html;
     var countEl = document.getElementById("user-count");
     if (countEl) countEl.textContent = totalUsers + " / " +
       scopes.reduce(function(a, s) { return a + s.users.length; }, 0) + " 个用户";
