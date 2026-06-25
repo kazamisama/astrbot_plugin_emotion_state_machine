@@ -21,9 +21,15 @@
     });
   }
 
+  // v0.8.20: per the official AstrBot plugin-pages guide the
+  // endpoint passed to bridge.apiGet() should NOT include any extra
+  // prefix — the bridge adds the plugin-name prefix. The backend
+  // handlers are registered at /{PLUGIN_NAME}/<endpoint>, so we pass
+  // "health", "state", etc. (no "page/" prefix). The previous code
+  // added a "page/" prefix that the backend never used after the
+  // v0.8.18 path-format switch, which is what caused "未找到该路由".
   function endpoint(path) {
-    var p = String(path).replace(/^\/+/, '');
-    return p.indexOf('page/') === 0 ? p : 'page/' + p;
+    return String(path).replace(/^\/+/, '');
   }
 
   function escapeHtml(s) {
