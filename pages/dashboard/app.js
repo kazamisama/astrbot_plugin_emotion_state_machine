@@ -29,6 +29,51 @@
     });
   }
 
+  // v0.9.13: signal name → 中文 label
+  var SIGNAL_ZH = {
+    praise:    "收到表扬",
+    thanks:    "感谢",
+    friendly:  "友善互动",
+    mention:   "被@提及",
+    poke:      "被戳",
+    technical: "技术讨论",
+    question:  "提问",
+    comfort:   "被安慰",
+    insult:    "被辱骂",
+    pressure:  "被施压",
+    silence:   "沉默",
+    success:   "成功",
+    failure:   "失败",
+    init:      "初始化",
+    reset:     "重置",
+  };
+  function signalZh(s) { return SIGNAL_ZH[s] || s; }
+
+  // v0.9.13: relation label → 中文
+  var RELATION_ZH = {
+    trusted:    "信任",
+    familiar:   "熟悉",
+    guarded:    "戒备",
+    irritated:  "烦躁",
+    attached:   "亲近",
+    neutral:    "中性",
+    unfamiliar: "陌生",
+  };
+  function relationZh(l) { return RELATION_ZH[l] || l; }
+
+  // v0.9.13: relative time formatter ("5 分钟前" 等)
+  function timeAgo(ts) {
+    if (!ts || ts <= 0) return "从未";
+    var sec = Math.max(0, Date.now() / 1000 - ts);
+    if (sec < 30) return "刚刚";
+    if (sec < 60) return Math.floor(sec) + " 秒前";
+    if (sec < 3600) return Math.floor(sec / 60) + " 分钟前";
+    if (sec < 86400) return Math.floor(sec / 3600) + " 小时前";
+    if (sec < 86400 * 30) return Math.floor(sec / 86400) + " 天前";
+    if (sec < 86400 * 365) return Math.floor(sec / (86400 * 30)) + " 个月前";
+    return Math.floor(sec / (86400 * 365)) + " 年前";
+  }
+
   // Mood → color/emoji mapping
   var MOOD_STYLE = {
     calm:      { color: "#0ea5e9", emoji: "🌊", desc: "心绪平稳，没有强烈起伏" },
@@ -186,7 +231,7 @@
           dimBarHTML("curiosity", s.group.curiosity) +
           '<div class="group-meta">' +
             '<span class="group-users-count">' + s.users.length + ' 用户</span>' +
-            '<span>最新: ' + esc(s.group.last_signal || "—") + '</span>' +
+            '<span title="最后被动更新 " + timeAgo(s.group.last_signal_at) + '">' + esc(signalZh(s.group.last_signal) || "—") + ' · ' + esc(timeAgo(s.group.last_signal_at)) + '</span>' +
           '</div>' +
         '</div>';
     }
@@ -234,7 +279,7 @@
       '<div>' + esc(dimLabel("affection")) + '</div>' +
       '<div>' + esc(dimLabel("irritation")) + '</div>' +
       '<div>' + esc(dimLabel("familiarity")) + '</div>' +
-      '<div>标签</div><div>最近信号</div>' +
+      '<div>关系</div><div>最近信号 · 何时</div>' +
       '</div>';
     var totalUsers = 0;
     var q = (filterQ || "").toLowerCase().trim();
@@ -255,8 +300,8 @@
           '<div>' + dimCellHTML("affection", u.affection) + '</div>' +
           '<div>' + dimCellHTML("irritation", u.irritation) + '</div>' +
           '<div>' + dimCellHTML("familiarity", u.familiarity) + '</div>' +
-          '<div><span class="label-badge" style="background: ' + m.color + '">' + esc(u.label) + '</span></div>' +
-          '<div style="font-size:0.75rem;color:var(--text-2)">' + esc(u.last_signal || "—") + '</div>' +
+          '<div><span class="label-badge" style="background: ' + m.color + '" title="' + esc(u.label) + '">' + esc(relationZh(u.label)) + '</span></div>' +
+          '<div style="font-size:0.75rem;color:var(--text-2)" title="最后被动更新 ' + esc(timeAgo(u.last_signal_at)) + '">' + esc(signalZh(u.last_signal) || "—") + ' · ' + esc(timeAgo(u.last_signal_at)) + '</div>' +
         '</div>';
         totalUsers++;
       }
