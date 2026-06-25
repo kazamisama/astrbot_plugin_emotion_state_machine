@@ -239,6 +239,7 @@
           '<div class="group-head">' +
             '<div class="group-name" title="' + esc(s.scope) + '">' + esc(s.scope) + '</div>' +
             '<span class="label-badge" style="background: ' + m.color + '">' + esc(s.group.label) + '</span>' +
+            '<button class="del-btn" data-scope="' + esc(s.scope) + '" title="删除此会话">&times;</button>' +
           '</div>' +
           dimBarHTML("valence", s.group.valence) +
           dimBarHTML("arousal", s.group.arousal) +
@@ -380,6 +381,24 @@
     }
     renderGroups();
     showUserTable();
+  }
+
+  // v0.9.29: delete a scope (uses apiPost — bridge only supports GET/POST)
+  async function scopeDelete(scopeName) {
+    setStatus("connecting", "删除中…");
+    try {
+      var b = getBridge();
+      if (!b) throw new Error("bridge unavailable");
+      await b.apiPost("delete/" + scopeName, {});
+      // Refresh everything after delete
+      if (activeScope && activeScope.scope === scopeName) {
+        activeScope = null;
+        renderHero(null);
+      }
+      await load();
+    } catch (e) {
+      setError("删除失败: " + (e.message || String(e)));
+    }
   }
 
   // ---- Status / errors ----

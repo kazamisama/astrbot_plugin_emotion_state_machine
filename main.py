@@ -996,6 +996,21 @@ class EmotionStateMachineStar(Star):
                     return s
             return {"error": "scope not found", "scope": scope}
 
+        async def scope_delete(scope: str):
+            """v0.9.29: remove an entire scope and its relations."""
+            normalized = normalize_scope(scope)
+            deleted = False
+            if normalized in self.machine.groups:
+                del self.machine.groups[normalized]
+                deleted = True
+            if normalized in self.machine.relations:
+                del self.machine.relations[normalized]
+                deleted = True
+            if deleted:
+                self._save_state(force=True)
+                return {"deleted": scope}
+            return {"error": "scope not found", "scope": scope}
+
         try:
             self.context.register_web_api(
                 f"/{_PLUGIN_NAME}/health", health, ["GET"], "ESM health",
@@ -1006,6 +1021,11 @@ class EmotionStateMachineStar(Star):
             self.context.register_web_api(
                 f"/{_PLUGIN_NAME}/state/<scope>", scope_detail,
                 ["GET"], "ESM single scope detail",
+            )
+            # v0.9.29: delete a scope via POST (bridge only supports GET/POST)
+            self.context.register_web_api(
+                f"/{_PLUGIN_NAME}/delete/<scope>", scope_delete,
+                ["POST"], "Delete a scope and its relations",
             )
         except Exception as e:
             logger.warning(
