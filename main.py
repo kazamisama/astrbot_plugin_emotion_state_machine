@@ -787,36 +787,29 @@ class EmotionStateMachineStar(Star):
         _PLUGIN_NAME = "astrbot_plugin_emotion_state_machine"
         # Use the doc-recommended helpers so we don't depend on Quart
         # internals.
-        try:
-            from astrbot.api.web import (
-                error_response,
-                json_response,
-                request,
-            )
-        except Exception as e:
-            logger.warning(
-                f"[emotion_state_machine] astrbot.api.web import failed: {e!r}"
-            )
-            return
+        # v0.8.19: astrbot.api.web doesn't exist in v4.25.5 (the docs
+        # example refers to a newer version). Fall back to returning
+        # plain dicts — the server accepts them and JSON-encodes
+        # automatically.
 
         async def health():
             machine = self.machine
-            return json_response({
+            return {
                 "version": __version__,
                 "appraisal_mode": machine.appraisal_mode,
                 "signal_count": len(getattr(machine, "groups", {})),
                 "scope_count": len(machine.groups),
-            })
+            }
 
         async def full_state():
-            return json_response(get_full_state(self.machine))
+            return get_full_state(self.machine)
 
         async def scope_detail(scope: str):
             state = get_full_state(self.machine)
             for s in state["scopes"]:
                 if s["scope"] == scope:
-                    return json_response(s)
-            return error_response(f"scope {scope!r} not found", status_code=404)
+                    return s
+            return {"error": "scope not found", "scope": scope}
 
         try:
             # Routes follow the doc example: plugin-name prefix, no /page.
