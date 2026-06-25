@@ -322,6 +322,9 @@
       if (h && Array.isArray(h.hidden_user_ids) && h.hidden_user_ids.length) {
         hiddenUserIds = h.hidden_user_ids;
       }
+      if (h && Array.isArray(h.hidden_scope_patterns) && h.hidden_scope_patterns.length) {
+        hiddenScopePatterns = h.hidden_scope_patterns;
+      }
       state = await apiGet("state");
       setStatus("ok", "已连接");
       renderStats(h, state);
@@ -376,6 +379,7 @@
     filterBot: false,
   };
   var hiddenUserIds = ["webchat"];  // populated from /health
+  var hiddenScopePatterns = ["webchat:"];  // populated from /health
   function loadSettings() {
     try {
       var raw = localStorage.getItem(SETTINGS_KEY);
@@ -435,11 +439,23 @@
     applySettingsToBody();
   }
 
-  // Apply active-only and nonempty-only filters
+  // Apply active-only / nonempty-only / webchat filters to scopes
+  // "Active" = has at least one of: active_users > 0, last_signal set,
+  // transitions > 0. OR logic (any one counts).
   function shouldShowGroup(s) {
+    if (settings.filterBot && hiddenScopePatterns.length) {
+      var sid = (s.scope || "").toLowerCase();
+      for (var i = 0; i < hiddenScopePatterns.length; i++) {
+        if (sid.indexOf(hiddenScopePatterns[i]) !== -1) return false;
+      }
+    }
     if (settings.nonemptyOnly) {
       var g = s.group || {};
-      if (g.active_users === 0 && (!g.last_signal || g.last_signal === "—")) return false;
+      var hasActive = g.active_users > 0;
+      var hasSignal = g.last_signal && g.last_signal !== "—" && g.last_signal !== "";
+      var hasTransition = (g.transitions || 0) > 0;
+      // Hide if NONE of these are true
+      if (!hasActive && !hasSignal && !hasTransition) return false;
     }
     return true;
   }

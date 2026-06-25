@@ -90,5 +90,11 @@
         "hint": "逗号分隔，例如 webchat,bot,astrbot。WebUI 设置里勾「过滤 webchat」时即应用此列表（不区分大小写）。",
         "type": "string",
         "default": "webchat"
+    },
+    "hidden_scope_patterns": {
+        "description": "【v0.9.10】群聊列表中始终隐藏的 scope_id 关键字",
+        "hint": "逗号分隔，例如 webchat:。WebUI 设置里勾「过滤 webchat 会话」时即应用此列表（子串匹配，不区分大小写）。",
+        "type": "string",
+        "default": "webchat:"
     }
 }
