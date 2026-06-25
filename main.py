@@ -35,6 +35,7 @@ try:
         normalize_user_id,
         signal_names,
     )
+    from .emotion_engine import __version__ as _ESM_VERSION  # v0.8.21
     from .emotion_engine.api import get_full_state
     from .emotion_engine.webui import render_webui_page, render_state_json
 except ImportError:  # pragma: no cover - allow direct script imports in tests
@@ -46,6 +47,7 @@ except ImportError:  # pragma: no cover - allow direct script imports in tests
         EmotionStateMachine,
         GroupEmotionSnapshot,
         UserRelationSnapshot,
+        __version__ as _ESM_VERSION,
         build_prompt_block,
         format_combined_chart,
         format_combined_view,
@@ -795,7 +797,7 @@ class EmotionStateMachineStar(Star):
         async def health():
             machine = self.machine
             return {
-                "version": __version__,
+                "version": _ESM_VERSION,
                 "appraisal_mode": machine.appraisal_mode,
                 "signal_count": len(getattr(machine, "groups", {})),
                 "scope_count": len(machine.groups),
