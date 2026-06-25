@@ -795,7 +795,10 @@ class EmotionStateMachineStar(Star):
             return {
                 "version": _ESM_VERSION,
                 "appraisal_mode": machine.appraisal_mode,
-                "signal_count": len(getattr(machine, "groups", {})),
+                # v0.9.21 fix: signal_count must be the number of distinct
+                # signal TYPES (13), not the number of groups (which
+                # equalled scope_count and made the stat card useless).
+                "signal_count": len(signal_names()),
                 "scope_count": len(machine.groups),
                 "hidden_user_ids": hidden_users,
                 "hidden_scope_patterns": hidden_scopes,
