@@ -299,47 +299,63 @@ class EmotionStateMachineStar(Star):
         return self._cfg_str("persona_stamp", "default")
 
     async def _resolve_event_persona(self, event: AstrMessageEvent) -> str:
-        """v0.9.25: per-conversation persona lookup via the official
-        AstrBot API ``persona_manager.resolve_selected_persona``.
+        """v0.9.26: per-conversation persona lookup, mirrors engram's
+        persona_resolver. Three tiers:
 
-        This honours the persona selected for the current
-        ``unified_msg_origin`` (session-level), falling back to the
-        conversation's stored persona, then the global default
-        (provider_settings.default_personality), then the legacy
-        ``persona_stamp`` config, then the literal string "default".
+        1. ``sp.get_async("session_service_config")`` (set by
+           ``/persona`` or ``/sel_persona`` command)
+        2. ``conversation_manager.get_conversation(umo, cid).persona_id``
+           (per-conversation persona assigned by AstrBot)
+        3. ``persona_manager.get_default_persona_v3(umo=umo).name``
+           (global default)
+
+        Returns the resolved persona id, or the legacy fallback
+        (``_bot_persona_name()``) on any failure.
         """
         try:
-            umo = event.unified_msg_origin
-            pm = getattr(self.context, "persona_manager", None)
-            if pm and umo:
-                # Try to pull a per-conversation persona_id from the
-                # event (AstrBot >= 4.16 attaches it).
-                conv_persona = None
-                conv = getattr(event, "conversation", None)
-                if conv is not None:
-                    conv_persona = getattr(conv, "persona_id", None)
-                if conv_persona is None:
-                    conv_persona = getattr(event, "persona_id", None)
-                platform = None
-                if hasattr(event, "get_platform_name"):
-                    try:
-                        platform = event.get_platform_name()
-                    except Exception:
-                        platform = None
-                persona_id, _persona, _force, _use_webchat = (
-                    await pm.resolve_selected_persona(
-                        umo=umo,
-                        conversation_persona_id=conv_persona,
-                        platform_name=platform or "",
-                    )
+            from astrbot.api import sp
+        except Exception:
+            sp = None
+        umo = getattr(event, "unified_msg_origin", None) or ""
+        # tier 1: session_service_config.persona_id (set by /persona)
+        if sp is not None and umo:
+            try:
+                cfg = await sp.get_async(
+                    scope="umo", scope_id=umo,
+                    key="session_service_config", default={},
                 )
-                if isinstance(persona_id, str) and persona_id:
-                    return persona_id
-        except Exception as exc:
-            logger.warning(
-                f"[emotion_state_machine] persona lookup failed, "
-                f"falling back to default: {exc!r}"
-            )
+                pid = (cfg or {}).get("persona_id")
+                if pid:
+                    return str(pid)
+            except Exception:
+                pass
+        # tier 2: conversation.persona_id via conversation_manager
+        cm = getattr(self.context, "conversation_manager", None)
+        if cm is not None and umo:
+            try:
+                cid = await cm.get_curr_conversation_id(umo)
+                if cid is not None:
+                    conv = await cm.get_conversation(umo, cid)
+                    if conv is not None:
+                        pid = getattr(conv, "persona_id", None)
+                        if pid == "[%None]":
+                            return ""  # explicitly persona-less
+                        if pid:
+                            return str(pid)
+            except Exception:
+                pass
+        # tier 3: global default persona (per-UMO lookup)
+        pm = getattr(self.context, "persona_manager", None)
+        if pm is not None:
+            try:
+                dp = await pm.get_default_persona_v3(umo=umo or None)
+                if isinstance(dp, dict):
+                    pid = dp.get("name")
+                    if pid:
+                        return str(pid)
+            except Exception:
+                pass
+        # final fallback: sync best-effort
         return self._bot_persona_name()
 
     async def _scope_id(self, event: AstrMessageEvent) -> str:
