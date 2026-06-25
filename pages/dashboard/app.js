@@ -657,7 +657,7 @@
     if (filterQ) {
       var found = false;
       for (var ui = 0; ui < (s.users || []).length; ui++) {
-        if ((s.users[ui].user_id || \"\").toLowerCase().indexOf(filterQ) !== -1) { found = true; break; }
+        if ((s.users[ui].user_id || "").toLowerCase().indexOf(filterQ) !== -1) { found = true; break; }
       }
       if (!found) return false;
     }
