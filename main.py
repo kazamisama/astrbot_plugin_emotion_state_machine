@@ -541,7 +541,15 @@ class EmotionStateMachineStar(Star):
         scope = await self._scope_id(event)
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
-        block = build_prompt_block(scope, view)
+        # v0.9.52: admins can override the prompt template via the
+        # `emotion_block_template` config field (see _conf_schema.json).
+        # When the field is empty, build_prompt_block falls back to
+        # DEFAULT_EMOTION_BLOCK_TEMPLATE in emotion_engine.prompt.
+        custom_template = self._cfg_str("emotion_block_template", "")
+        block = build_prompt_block(
+            scope, view,
+            template=custom_template or None,
+        )
         # Append to extra_user_content_parts (not system_prompt) so the
         # dynamic block lands inside the user message rather than the
         # system prompt, keeping the LLM prefix cache intact.

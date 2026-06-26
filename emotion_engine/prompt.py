@@ -184,11 +184,96 @@ def format_combined_chart(view: CombinedEmotionView) -> str:
 # Prompt block
 # ---------------------------------------------------------------------------
 
+# v0.9.52: default template — overridable via _conf_schema.json's
+# `emotion_block_template` field. Available placeholders:
+#   {scope} {combined_label} {style_hint}
+#   {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users}
+#   {pad_p} {pad_a} {pad_d}
+#   {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity}
+#   {group_last_signal} {relation_last_signal}
+#   {relation_block} — pre-formatted multi-line block (label + 4 dims) or
+#     the literal string "towards_current_user: unavailable" when no relation.
+DEFAULT_EMOTION_BLOCK_TEMPLATE = (
+    "## Bot Emotion State\n"
+    "scope: {scope}\n"
+    "combined_label: {combined_label}\n"
+    "group: label={group_label}, valence={group_valence}, arousal={group_arousal}, "
+    "stress={group_stress}, curiosity={group_curiosity}, active_users={active_users}\n"
+    "pad: P={pad_p} A={pad_a} D={pad_d}\n"
+    "{relation_block}\n"
+    "last_signal: group={group_last_signal}, user={relation_last_signal}\n"
+    "style_hint: {style_hint}\n"
+    "Use this as subtle continuity only. Do not mention numeric scores unless explicitly asked."
+)
+
+
+def _build_emotion_block_variables(
+    scope: str,
+    view_or_snapshot: "Union[CombinedEmotionView, GroupEmotionSnapshot]",
+) -> dict:
+    """Build the {placeholder} -> value dict consumed by str.format()."""
+    if isinstance(view_or_snapshot, CombinedEmotionView):
+        view = view_or_snapshot
+    else:
+        view = CombinedEmotionView(scope=scope, user_id="", group=view_or_snapshot, relation=None)
+
+    group = view.group
+    relation = view.relation
+    p, a, d = compute_pad(group)
+
+    if relation is not None:
+        relation_block = (
+            f"towards_current_user: label={relation.label}, "
+            f"trust={relation.trust:.1f}, affection={relation.affection:.1f}, "
+            f"irritation={relation.irritation:.1f}, familiarity={relation.familiarity:.1f}"
+        )
+        relation_label = relation.label
+        relation_trust = round(relation.trust, 1)
+        relation_affection = round(relation.affection, 1)
+        relation_irritation = round(relation.irritation, 1)
+        relation_familiarity = round(relation.familiarity, 1)
+        relation_last_signal = relation.last_signal
+    else:
+        relation_block = "towards_current_user: unavailable"
+        relation_label = "n/a"
+        relation_trust = relation_affection = relation_irritation = relation_familiarity = "n/a"
+        relation_last_signal = "-"
+
+    return {
+        "scope": scope,
+        "combined_label": view.label,
+        "style_hint": style_hint_for(view),
+        "group_label": group.label,
+        "group_valence": round(group.valence, 1),
+        "group_arousal": round(group.arousal, 1),
+        "group_stress": round(group.stress, 1),
+        "group_curiosity": round(group.curiosity, 1),
+        "active_users": len(group.active_users),
+        "pad_p": round(p, 1),
+        "pad_a": round(a, 1),
+        "pad_d": round(d, 1),
+        "relation_block": relation_block,
+        "relation_label": relation_label,
+        "relation_trust": relation_trust,
+        "relation_affection": relation_affection,
+        "relation_irritation": relation_irritation,
+        "relation_familiarity": relation_familiarity,
+        "group_last_signal": group.last_signal,
+        "relation_last_signal": relation_last_signal,
+    }
+
+
 def build_prompt_block(
     scope: str,
-    view_or_snapshot: Union[CombinedEmotionView, GroupEmotionSnapshot],
+    view_or_snapshot: "Union[CombinedEmotionView, GroupEmotionSnapshot]",
+    template: str | None = None,
 ) -> str:
     """Build a low-noise prompt block for LLM context injection.
+
+    v0.9.52: ``template`` overrides DEFAULT_EMOTION_BLOCK_TEMPLATE.
+    The caller (plugin) typically reads the override from
+    _conf_schema.json's ``emotion_block_template`` field so admins
+    can edit the wording without touching code.
 
     The returned string is wrapped in :data:`ESM_BLOCK_START` /
     :data:`ESM_BLOCK_END` sentinel markers so the plugin can detect and
@@ -196,40 +281,10 @@ def build_prompt_block(
     markers are HTML-style comments and are not rendered or interpreted
     by LLMs.
     """
-    if isinstance(view_or_snapshot, CombinedEmotionView):
-        view = view_or_snapshot
-    else:
-        view = CombinedEmotionView(scope=scope, user_id="", group=view_or_snapshot, relation=None)
-
-    style_hint = style_hint_for(view)
-    group = view.group
-    relation = view.relation
-    relation_line = "towards_current_user: unavailable"
-    if relation is not None:
-        relation_line = (
-            f"towards_current_user: label={relation.label}, trust={relation.trust:.1f}, "
-            f"affection={relation.affection:.1f}, irritation={relation.irritation:.1f}, "
-            f"familiarity={relation.familiarity:.1f}"
-        )
-
-    p, a, d = compute_pad(group)
-    inner = (
-        "## Bot Emotion State\n"
-        f"scope: {scope}\n"
-        f"combined_label: {view.label}\n"
-        f"group: label={group.label}, valence={group.valence:.1f}, arousal={group.arousal:.1f}, "
-        f"stress={group.stress:.1f}, curiosity={group.curiosity:.1f}, active_users={len(group.active_users)}\n"
-        f"pad: P={p:.1f} A={a:.1f} D={d:.1f}\n"
-        f"{relation_line}\n"
-        f"last_signal: group={group.last_signal}"
-        + (f", user={relation.last_signal}" if relation is not None else "")
-        + "\n"
-        f"style_hint: {style_hint}\n"
-        "Use this as subtle continuity only. Do not mention numeric scores unless explicitly asked."
-    )
+    variables = _build_emotion_block_variables(scope, view_or_snapshot)
+    tmpl = template if template else DEFAULT_EMOTION_BLOCK_TEMPLATE
+    inner = tmpl.format(**variables)
     return f"{ESM_BLOCK_START}\n{inner}\n{ESM_BLOCK_END}"
-
-
 def style_hint_for(
     view_or_snapshot: Union[CombinedEmotionView, GroupEmotionSnapshot],
 ) -> str:

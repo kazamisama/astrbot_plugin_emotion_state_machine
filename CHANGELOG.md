@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.9.52 - 2026-06-26
+
+### Added
+
+- **情绪块模板可编辑**（参考 social_context 的 `reply_prompt_template` 模式）。
+  `emotion_engine/prompt.py` 拆出 `DEFAULT_EMOTION_BLOCK_TEMPLATE` 常量和
+  `_build_emotion_block_variables()` 变量构建函数；`build_prompt_block`
+  新增 `template` 参数。`_conf_schema.json` 加 `emotion_block_template: text`
+  配置项，`main.py:on_llm_request` 从 config 读模板传入。20 个占位符
+  全部可替换（scope / combined_label / style_hint / group/relation 字段）。
+  留空 → 用默认模板；自定义 → admin 在 AstrBot Dashboard 直接编辑无需改代码。
+
 ## v0.9.51 - 2026-06-26
 
 ### Added

@@ -49,7 +49,7 @@ from __future__ import annotations
 
 # Package version — keep in sync with metadata.yaml.
 # Used by page_api.py for the /health endpoint.
-__version__ = "0.9.51"
+__version__ = "0.9.52"
 
 # Re-exports — every name here must remain importable from
 # ``emotion_engine`` for backward compat with the pre-v0.4.0 single-file
@@ -127,6 +127,7 @@ from .machine import EmotionStateMachine
 
 # ---- prompt -------------------------------------------------------
 from .prompt import (
+    DEFAULT_EMOTION_BLOCK_TEMPLATE,
     ESM_BLOCK_END,
     ESM_BLOCK_START,
     _bar,
@@ -203,6 +204,7 @@ __all__ = [
     # prompt
     "ESM_BLOCK_START",
     "ESM_BLOCK_END",
+    "DEFAULT_EMOTION_BLOCK_TEMPLATE",
     "build_prompt_block",
     "compute_pad",
     "format_snapshot",
