@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.9.48 - 2026-06-26
+
+### Changed
+
+- **人格隔离改为开关**（`_conf_schema.json` / `main.py:_scope_id`）。
+  之前用字符串配置 `persona_stamp`（填「default」= 隔离，填空 = 不隔离），
+  语义模糊。新增 `persona_isolation_enabled: bool`，默认 **true**，配 `persona_stamp`
+  仍保留作为 persona_manager / 会话配置都查不到时的兜底。`_scope_id` 加开关判断：
+  关掉 → 不拼 persona stamp，所有人格共享 namespace（与 v0.9.22 之前行为一致）；
+  开 → 沿用 `_resolve_event_persona` 三级 fallback（session_service_config →
+  conversation_manager → persona_manager → persona_stamp 兜底）。`/emotion_state`
+  配置快照同时显示开关和兜底值，便于诊断。
+
 ## v0.9.47 - 2026-06-26
 
 ### Changed

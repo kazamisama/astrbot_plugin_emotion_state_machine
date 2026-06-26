@@ -42,9 +42,15 @@
                 "default": "direct",
                 "options": ["direct", "occ_static", "occ_heuristic"]
             },
+            "persona_isolation_enabled": {
+                "description": "人格隔离（v0.9.48 起改为开关，默认开启）",
+                "hint": "开启后：scope 自动拼上当前 bot 人格名（从 persona_manager / 会话配置解析），同群不同人格互不干扰各自的 group + relation。关闭后：同群所有人格共享同一个 namespace（与 v0.9.22 之前行为一致）。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
+                "type": "bool",
+                "default": true
+            },
             "persona_stamp": {
-                "description": "人格隔离标签（v0.9.22 起默认开启）",
-                "hint": "「default」= 启用隔离（推荐）。留空 = 同群所有人格共享情绪状态（兼容旧行为）。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
+                "description": "人格隔离兜底标签（高级）",
+                "hint": "仅当 persona_manager / 会话配置都查不到 bot 人格名时使用此值。普通用户不用改，留空或填「default」即可。",
                 "type": "string",
                 "default": "default"
             }

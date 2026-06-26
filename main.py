@@ -426,6 +426,10 @@ class EmotionStateMachineStar(Star):
 
     async def _scope_id(self, event: AstrMessageEvent) -> str:
         base = event.get_group_id() or event.unified_msg_origin or "_private"
+        # v0.9.48: persona_isolation_enabled switch — when off, all
+        # personas share one namespace (pre-v0.9.22 behavior).
+        if not self._cfg_bool("persona_isolation_enabled", True):
+            return base
         stamp = await self._resolve_event_persona(event)
         return f"{base}:{stamp}" if stamp else base
 
@@ -570,7 +574,8 @@ class EmotionStateMachineStar(Star):
             f"- inject_enabled: {self._cfg_bool('inject_enabled', True)}",
             f"- persist_state: {self._cfg_bool('persist_state', True)}",
             f"- appraisal_mode: {self._cfg_str('appraisal_mode', 'direct')}",
-            f"- persona_stamp: {self._cfg_str('persona_stamp', '') or '(none — shared across personas)'}",
+            f"- persona_isolation_enabled: {self._cfg_bool('persona_isolation_enabled', True)}",
+            f"- persona_stamp (fallback): {self._cfg_str('persona_stamp', '') or '(none)'}",
             f"- decay_half_life_seconds: {decay_half_life:.0f}s",
             f"- active_window_seconds: {active_window:.0f}s",
             f"- relation_ttl_seconds: {relation_ttl:.0f}s {_days(relation_ttl)}",
