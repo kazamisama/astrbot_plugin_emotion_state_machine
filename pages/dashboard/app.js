@@ -503,6 +503,16 @@
       if (h && h.active_window_seconds) {
         activeWindowSeconds = h.active_window_seconds;
       }
+      // v0.9.49: apply backend's filter_bot_default on FIRST visit
+      // (when localStorage has no _esm_initialized marker). After that
+      // user's localStorage choice wins. This makes schema defaults
+      // actually take effect — previously the hidden_* lists never
+      // applied because settings.filterBot defaulted to false.
+      if (h && typeof h.filter_bot_default === "boolean" && !settings._esm_initialized) {
+        settings.filterBot = h.filter_bot_default;
+        settings._esm_initialized = true;
+        saveSettings();
+      }
       state = await apiGet("state");
       setStatus("ok", "已连接");
       renderStats(h, state);

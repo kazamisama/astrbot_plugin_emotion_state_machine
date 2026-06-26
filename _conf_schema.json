@@ -135,6 +135,12 @@
                 "hint": "逗号分隔，例如 webchat:。WebUI 设置里勾「过滤 webchat 会话」时即应用此列表（子串匹配，不区分大小写）。",
                 "type": "string",
                 "default": "webchat:"
+            },
+            "filter_bot_default": {
+                "description": "Dashboard 默认启用过滤（v0.9.49 起）",
+                "hint": "首次打开 Dashboard 时 filterBot 开关的默认状态。开启后 hidden_user_ids / hidden_scope_patterns 列表立即生效（webchat 会话和用户被隐藏）。用户可以在 Dashboard 设置里临时切换；切换后的选择会被记住，下次刷新页面保持。",
+                "type": "bool",
+                "default": true
             }
         }
     }

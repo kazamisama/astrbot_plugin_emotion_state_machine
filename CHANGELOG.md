@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.9.49 - 2026-06-26
+
+### Fixed
+
+- **隐藏默认值终于生效**。`hidden_user_ids` / `hidden_scope_patterns` 这两个 schema
+  默认值（`webchat` / `webchat:`）以前永远不生效——因为 `shouldShowGroup` /
+  `shouldShowUser` 把 hidden 列表的过滤逻辑 gate 在 `settings.filterBot` 之后，
+  而 `settings.filterBot` 默认 false。新增 `filter_bot_default: bool`（默认 true）
+  配置项，后端 `/health` 把它推给前端；前端在**首次访问**（localStorage 没有
+  `_esm_initialized` 标记）时用后端默认值覆盖 `settings.filterBot`。之后用户的
+  toggle 选择会被记住并保留——避免每次刷新都被覆盖。
+
 ## v0.9.48 - 2026-06-26
 
 ### Changed

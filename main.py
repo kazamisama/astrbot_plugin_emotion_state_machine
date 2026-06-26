@@ -1001,6 +1001,12 @@ class EmotionStateMachineStar(Star):
                 "scope_count": len(machine.groups),
                 "hidden_user_ids": hidden_users,
                 "hidden_scope_patterns": hidden_scopes,
+                # v0.9.49: expose the configured default for the frontend's
+                # filterBot toggle so schema defaults take effect on first
+                # visit (otherwise hidden_user_ids/hidden_scope_patterns
+                # never apply — shouldShowGroup/shouldShowUser gate them
+                # behind settings.filterBot, which defaults to false).
+                "filter_bot_default": self._cfg_bool("filter_bot_default", True),
                 "active_window_seconds": machine.active_window_seconds,
                 "bot_persona": self._bot_persona_name(),
             }
