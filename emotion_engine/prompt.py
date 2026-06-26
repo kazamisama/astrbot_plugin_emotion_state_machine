@@ -45,33 +45,33 @@ ESM_BLOCK_END = "<!-- esm:emotion-block:end -->"
 def format_snapshot(scope: str, snapshot: GroupEmotionSnapshot) -> str:
     age = max(0.0, time.time() - snapshot.updated_at)
     return (
-        f"ðŸ§­ Group Emotion | {scope}\n"
-        f"- label: {snapshot.label}\n"
-        f"- valence: {snapshot.valence:.2f}\n"
-        f"- arousal: {snapshot.arousal:.2f}\n"
-        f"- stress: {snapshot.stress:.2f}\n"
-        f"- curiosity: {snapshot.curiosity:.2f}\n"
-        f"- active_users: {len(snapshot.active_users)}\n"
-        f"- last_signal: {snapshot.last_signal}\n"
-        f"- last_reason: {snapshot.last_reason}\n"
-        f"- transitions: {snapshot.transitions}\n"
-        f"- updated: {age:.0f}s ago"
+        f"🧭 群情绪 | {scope}\n"
+        f"- \u6807\u7b7e: {snapshot.label}\n"
+        f"- \u6109\u60a6\u5ea6: {snapshot.valence:.1f}\n"
+        f"- \u5524\u9192\u5ea6: {snapshot.arousal:.1f}\n"
+        f"- \u538b\u529b: {snapshot.stress:.1f}\n"
+        f"- \u597d\u5947\u5fc3: {snapshot.curiosity:.1f}\n"
+        f"- \u6d3b\u8dc3\u7528\u6237: {len(snapshot.active_users)}\n"
+        f"- \u6700\u8fd1\u4fe1\u53f7: {snapshot.last_signal}\n"
+        f"- \u6700\u8fd1\u539f\u56e0: {snapshot.last_reason}\n"
+        f"- \u72b6\u6001\u8fc1\u79fb: {snapshot.transitions}\n"
+        f"- \u66f4\u65b0\u4e8e: {age:.0f} \u79d2\u524d"
     )
 
 
 def format_relation(scope: str, user_id: str, snapshot: UserRelationSnapshot) -> str:
     age = max(0.0, time.time() - snapshot.updated_at)
     return (
-        f"ðŸ‘¤ User Relation | {scope} / {user_id}\n"
-        f"- label: {snapshot.label}\n"
-        f"- trust: {snapshot.trust:.2f}\n"
-        f"- affection: {snapshot.affection:.2f}\n"
-        f"- irritation: {snapshot.irritation:.2f}\n"
-        f"- familiarity: {snapshot.familiarity:.2f}\n"
-        f"- last_signal: {snapshot.last_signal}\n"
-        f"- last_reason: {snapshot.last_reason}\n"
-        f"- transitions: {snapshot.transitions}\n"
-        f"- updated: {age:.0f}s ago"
+        f"👤 用户关系 | {scope} / {user_id}\n"
+        f"- \u6807\u7b7e: {snapshot.label}\n"
+        f"- \u4fe1\u4efb: {snapshot.trust:.1f}\n"
+        f"- \u597d\u611f: {snapshot.affection:.1f}\n"
+        f"- \u7126\u8651: {snapshot.irritation:.1f}\n"
+        f"- \u719f\u6089\u5ea6: {snapshot.familiarity:.1f}\n"
+        f"- \u6700\u8fd1\u4fe1\u53f7: {snapshot.last_signal}\n"
+        f"- \u6700\u8fd1\u539f\u56e0: {snapshot.last_reason}\n"
+        f"- \u72b6\u6001\u8fc1\u79fb: {snapshot.transitions}\n"
+        f"- \u66f4\u65b0\u4e8e: {age:.0f} \u79d2\u524d"
     )
 
 
@@ -79,7 +79,7 @@ def format_combined_view(view: CombinedEmotionView) -> str:
     text = format_snapshot(view.scope, view.group)
     if view.relation is not None:
         text += "\n\n" + format_relation(view.scope, view.user_id, view.relation)
-        text += f"\n\n- combined_label: {view.label}"
+        text += f"\n\n- \u7efc\u5408\u6807\u7b7e: {view.label}"
     return text
 
 
@@ -125,7 +125,7 @@ def format_group_chart(scope: str, snapshot: GroupEmotionSnapshot) -> str:
 
     Output looks like::
 
-        Group Emotion | 123456
+        群情绪 | 123456
           valence      â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘ 0.78  happy
           arousal      â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘ 0.55
           stress       â–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘ 0.30
@@ -135,14 +135,14 @@ def format_group_chart(scope: str, snapshot: GroupEmotionSnapshot) -> str:
     p, a, d = compute_pad(snapshot)
     age = max(0.0, time.time() - snapshot.updated_at)
     lines = [
-        f"ðŸ§­ Group Emotion | {scope}",
-        f"  valence   {_bar(snapshot.valence)} {snapshot.valence:.2f}  {snapshot.label}",
-        f"  arousal   {_bar(snapshot.arousal)} {snapshot.arousal:.2f}",
-        f"  stress    {_bar(snapshot.stress)} {snapshot.stress:.2f}",
-        f"  curiosity {_bar(snapshot.curiosity)} {snapshot.curiosity:.2f}",
-        f"  PAD: P={p:.2f} A={a:.2f} D={d:.2f}",
-        f"  active_users: {len(snapshot.active_users)} | "
-        f"signal: {snapshot.last_signal} | updated: {age:.0f}s ago",
+        f"🧭 群情绪 | {scope}",
+        f"  \u6109\u60a6\u5ea6     {_bar(snapshot.valence)} {snapshot.valence:.1f}  {snapshot.label}",
+        f"  \u5524\u9192\u5ea6     {_bar(snapshot.arousal)} {snapshot.arousal:.1f}",
+        f"  \u538b\u529b       {_bar(snapshot.stress)} {snapshot.stress:.1f}",
+        f"  \u597d\u5947\u5fc3     {_bar(snapshot.curiosity)} {snapshot.curiosity:.1f}",
+        f"  PAD: \u6109\u60a6={p:.1f} \u5524\u9192={a:.1f} \u652f\u914d={d:.1f}",
+        f"  \u6d3b\u8dc3\u7528\u6237: {len(snapshot.active_users)} | "
+        f"\u6700\u8fd1\u4fe1\u53f7: {snapshot.last_signal} | \u66f4\u65b0\u4e8e: {age:.0f} \u79d2\u524d",
     ]
     return "\n".join(lines)
 
@@ -152,7 +152,7 @@ def format_relation_chart(scope: str, user_id: str, snapshot: UserRelationSnapsh
 
     Output looks like::
 
-        User Relation | 123456 / user-a
+        用户关系 | 123456 / user-a
           trust        â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘ 0.78  trusted
           affection    â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘ 0.92
           irritation   â–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘ 0.15
@@ -160,13 +160,13 @@ def format_relation_chart(scope: str, user_id: str, snapshot: UserRelationSnapsh
     """
     age = max(0.0, time.time() - snapshot.updated_at)
     lines = [
-        f"ðŸ‘¤ User Relation | {scope} / {user_id}",
-        f"  trust       {_bar(snapshot.trust)} {snapshot.trust:.2f}  {snapshot.label}",
-        f"  affection   {_bar(snapshot.affection)} {snapshot.affection:.2f}",
-        f"  irritation  {_bar(snapshot.irritation)} {snapshot.irritation:.2f}",
-        f"  familiarity {_bar(snapshot.familiarity)} {snapshot.familiarity:.2f}",
-        f"  signal: {snapshot.last_signal} | transitions: {snapshot.transitions} | "
-        f"updated: {age:.0f}s ago",
+        f"👤 用户关系 | {scope} / {user_id}",
+        f"  \u4fe1\u4efb         {_bar(snapshot.trust)} {snapshot.trust:.1f}  {snapshot.label}",
+        f"  \u597d\u611f         {_bar(snapshot.affection)} {snapshot.affection:.1f}",
+        f"  \u7126\u8651        {_bar(snapshot.irritation)} {snapshot.irritation:.1f}",
+        f"  \u719f\u6089\u5ea6     {_bar(snapshot.familiarity)} {snapshot.familiarity:.1f}",
+        f"  \u6700\u8fd1\u4fe1\u53f7: {snapshot.last_signal} | \u72b6\u6001\u8fc1\u79fb: {snapshot.transitions} | "
+        f"\u66f4\u65b0\u4e8e: {age:.0f} \u79d2\u524d",
     ]
     return "\n".join(lines)
 
@@ -176,7 +176,7 @@ def format_combined_chart(view: CombinedEmotionView) -> str:
     text = format_group_chart(view.scope, view.group)
     if view.relation is not None:
         text += "\n\n" + format_relation_chart(view.scope, view.user_id, view.relation)
-        text += f"\n  combined_label: {view.label}"
+        text += f"\n  \u7efc\u5408\u6807\u7b7e: {view.label}"
     return text
 
 
@@ -225,7 +225,7 @@ def _build_emotion_block_variables(
         relation_block = (
             f"\u5bf9\u5f53\u524d\u7528\u6237: \u5173\u7cfb\u6807\u7b7e={relation.label}, "
             f"\u4fe1\u4efb={relation.trust:.1f}, \u597d\u611f={relation.affection:.1f}, "
-            f"\u7126\u865a={relation.irritation:.1f}, \u719f\u6089\u5ea6={relation.familiarity:.1f}"
+            f"\u7126\u8651={relation.irritation:.1f}, \u719f\u6089\u5ea6={relation.familiarity:.1f}"
         )
         relation_label = relation.label
         relation_trust = round(relation.trust, 1)

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.9.54 - 2026-06-26
+
+### Changed
+
+- **所有 format 函数中文化**（`emotion_engine/prompt.py`）：
+  - `format_snapshot` / `format_relation` / `format_combined_view` /
+    `format_group_chart` / `format_relation_chart` / `format_combined_chart`
+    全部标签中文化（标签 / 愉悦度 / 唤醒度 / 压力 / 好奇心 / 活跃用户 /
+    最近信号 / 最近原因 / 状态迁移 / 更新于 / 对当前用户 / 信任 / 好感 /
+    焦虑 / 熟悉度 / 综合标签 / PAD）
+  - 顺手修了 UTF-8 emoji 被错误解码为 cp1252 的乱码（`ðŸ§­` → `🧭`、
+    `ðŸ‘¤` → `👤`）
+  - 顺手把 `.2f` 改成 `.1f`（与 v0.9.51 build_prompt_block 对齐）
+
 ## v0.9.53 - 2026-06-26
 
 ### Changed
