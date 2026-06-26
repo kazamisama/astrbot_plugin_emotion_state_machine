@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## v0.9.47 - 2026-06-26
+
+### Changed
+
+- **配置页重构为分框布局**（`_conf_schema.json`）。参考 engram 的 `xxx_settings` 模式，把原来的扁平 17 项配置按主题分到 5 个框：
+  - **基础开关**：enabled / only_group / persist_state
+  - **Prompt 注入**：inject_enabled / appraisal_mode / persona_stamp
+  - **状态机调参**：decay_half_life_seconds / active_window_seconds / dilution_exponent
+  - **持久化与 TTL**：state_path / save_interval_seconds / relation_ttl_seconds / group_ttl_seconds
+  - **信号与可见性**：disabled_signals / hidden_user_ids / hidden_scope_patterns
+- `appraisal_mode` 选项字段从 `choices` 改成 `options`（与 engram 对齐，AstrBot Dashboard 两种都识别）。
+
+### Fixed
+
+- **schema 重复 key**：`active_window_seconds` 之前在 schema 中重复出现两次（默认值 300 / 1800），实际 main.py 只用 300。合并为唯一项，默认 300。
+
 ## v0.9.46 - 2026-06-26
 
 ### Changed

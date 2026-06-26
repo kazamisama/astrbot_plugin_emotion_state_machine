@@ -1,106 +1,135 @@
 {
-    "enabled": {
-        "description": "【总开关】启用情绪状态机",
-        "hint": "关闭后不监听消息、不注入 prompt、不更新状态",
-        "type": "bool",
-        "default": true
+    "basic_settings": {
+        "description": "基础开关",
+        "type": "object",
+        "hint": "ESM 的全局启停、作用域与持久化",
+        "items": {
+            "enabled": {
+                "description": "启用情绪状态机",
+                "hint": "关闭后不监听消息、不注入 prompt、不更新状态",
+                "type": "bool",
+                "default": true
+            },
+            "only_group": {
+                "description": "仅群聊生效",
+                "hint": "关闭后私聊也会维护独立情绪状态",
+                "type": "bool",
+                "default": true
+            },
+            "persist_state": {
+                "description": "保存情绪状态到本地 JSON",
+                "hint": "开启后重启 AstrBot 仍能保留各会话的情绪状态",
+                "type": "bool",
+                "default": true
+            }
+        }
     },
-    "only_group": {
-        "description": "【作用域】仅群聊生效",
-        "hint": "关闭后私聊也会维护独立情绪状态",
-        "type": "bool",
-        "default": true
+    "inject_settings": {
+        "description": "Prompt 注入",
+        "type": "object",
+        "hint": "控制情绪块如何注入到 LLM 请求中（v0.9.46 起改为 extra_user_content_parts，不污染 prefix cache）",
+        "items": {
+            "inject_enabled": {
+                "description": "在 LLM 请求前注入情绪状态摘要",
+                "hint": "注入内容很短，只作为语气连续性参考；不会要求模型明说数值",
+                "type": "bool",
+                "default": true
+            },
+            "appraisal_mode": {
+                "description": "情绪评价模式",
+                "hint": "direct = v0.4.0 直接查表行为（默认，最稳定）；occ_static = 静态 OCC 评价变量转维度；occ_heuristic = OCC + 启发式（文本特征/群状态/用户关系）。切换到 occ 模式后维度量级与 direct 略有不同但方向一致。",
+                "type": "string",
+                "default": "direct",
+                "options": ["direct", "occ_static", "occ_heuristic"]
+            },
+            "persona_stamp": {
+                "description": "人格隔离标签（v0.9.22 起默认开启）",
+                "hint": "「default」= 启用隔离（推荐）。留空 = 同群所有人格共享情绪状态（兼容旧行为）。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
+                "type": "string",
+                "default": "default"
+            }
+        }
     },
-    "inject_enabled": {
-        "description": "【Prompt 注入】在 LLM 请求前注入情绪状态摘要",
-        "hint": "注入内容很短，只作为语气连续性参考；不会要求模型明说数值",
-        "type": "bool",
-        "default": true
+    "state_machine_settings": {
+        "description": "状态机调参",
+        "type": "object",
+        "hint": "情绪衰减、稀释曲线、活跃窗口等核心算法参数",
+        "items": {
+            "decay_half_life_seconds": {
+                "description": "情绪回归基线半衰期（秒）",
+                "hint": "数值越小，情绪越快回到默认状态；900 表示约 15 分钟半衰期",
+                "type": "float",
+                "default": 900.0
+            },
+            "active_window_seconds": {
+                "description": "活跃用户窗口（秒）",
+                "hint": "群公共情绪会按活跃人数做 1/n^exponent 稀释；此值决定「最近多久发言算活跃」。默认 300（5 分钟）。",
+                "type": "float",
+                "default": 300.0
+            },
+            "dilution_exponent": {
+                "description": "活跃人数稀释曲线的指数",
+                "hint": "公式 1/n^exponent，0.5=sqrt 温和（默认），0.0=不稀释，1.0=线性衰减；范围 0.0–2.0",
+                "type": "float",
+                "default": 0.5
+            }
+        }
     },
-    "persist_state": {
-        "description": "【持久化】保存情绪状态到本地 JSON",
-        "hint": "开启后重启 AstrBot 仍能保留各会话的情绪状态",
-        "type": "bool",
-        "default": true
+    "persistence_settings": {
+        "description": "持久化与 TTL",
+        "type": "object",
+        "hint": "状态保存路径、间隔，以及过期清理",
+        "items": {
+            "state_path": {
+                "description": "状态文件路径",
+                "hint": "留空则使用 data/plugin_data/astrbot_plugin_emotion_state_machine/emotion_state.json",
+                "type": "string",
+                "default": ""
+            },
+            "save_interval_seconds": {
+                "description": "自动保存最小间隔（秒）",
+                "hint": "普通消息更新不会每次立刻落盘；手动命令和退出会强制保存",
+                "type": "float",
+                "default": 10.0
+            },
+            "relation_ttl_seconds": {
+                "description": "用户关系快照的最大保留时间（秒）",
+                "hint": "超过此时间未活跃的用户关系会被自动清理，避免内存无限增长；604800 表示 7 天",
+                "type": "float",
+                "default": 604800.0
+            },
+            "group_ttl_seconds": {
+                "description": "群公共情绪快照的最大保留时间（秒）",
+                "hint": "超过此时间未活跃的群组情绪会被自动清理，避免 JSON 状态文件无限膨胀；2592000 表示 30 天",
+                "type": "float",
+                "default": 2592000.0
+            }
+        }
     },
-    "state_path": {
-        "description": "【持久化】状态文件路径",
-        "hint": "留空则使用 data/plugin_data/astrbot_plugin_emotion_state_machine/emotion_state.json",
-        "type": "string",
-        "default": ""
-    },
-    "save_interval_seconds": {
-        "description": "【持久化】自动保存最小间隔（秒）",
-        "hint": "普通消息更新不会每次立刻落盘；手动命令和退出会强制保存",
-        "type": "float",
-        "default": 10.0
-    },
-    "decay_half_life_seconds": {
-        "description": "【状态机】情绪回归基线半衰期（秒）",
-        "hint": "数值越小，情绪越快回到默认状态；900 表示约 15 分钟半衰期",
-        "type": "float",
-        "default": 900.0
-    },
-    "active_window_seconds": {
-        "description": "【群聊稀释】活跃用户统计窗口（秒）",
-        "hint": "群公共情绪会按活跃人数做 1/sqrt(n) 稀释，避免单个用户强烈污染整个群状态",
-        "type": "float",
-        "default": 300.0
-    },
-    "relation_ttl_seconds": {
-        "description": "【关系层】用户关系快照的最大保留时间（秒）",
-        "hint": "超过此时间未活跃的用户关系会被自动清理，避免内存无限增长；604800 表示 7 天",
-        "type": "float",
-        "default": 604800.0
-    },
-    "group_ttl_seconds": {
-        "description": "【群聊层】群公共情绪快照的最大保留时间（秒）",
-        "hint": "超过此时间未活跃的群组情绪会被自动清理，避免 JSON 状态文件无限膨胀；2592000 表示 30 天",
-        "type": "float",
-        "default": 2592000.0
-    },
-    "dilution_exponent": {
-        "description": "【群聊稀释】活跃人数稀释曲线的指数",
-        "hint": "公式 1/n^exponent，0.5=sqrt 温和（默认），0.0=不稀释，1.0=线性衰减；范围 0.0–2.0",
-        "type": "float",
-        "default": 0.5
-    },
-    "appraisal_mode": {
-        "description": "【v0.5.0】情绪评价模式",
-        "hint": "direct = v0.4.0 直接查表行为（默认）；occ_static = 静态 OCC 评价变量转维度；occ_heuristic = OCC + 启发式（文本特征/群状态/用户关系）。切换到 occ 模式后维度量级与 direct 略有不同但方向一致。",
-        "type": "string",
-        "default": "direct",
-        "choices": ["direct", "occ_static", "occ_heuristic"]
-    },
-    "persona_stamp": {
-        "description": "【v0.8.1 / 默认开启 v0.9.22】人格隔离标签",
-        "hint": "v0.9.22 起默认开启：「default」。留空 = 同群所有人格共享情绪状态。填入标识（如 shirley）= 不同人格独立维护各自的 group + relation 状态。修改后旧 scope 进入新命名空间，旧状态文件中的数据不会丢失但也不会自动迁移。",
-        "type": "string",
-        "default": "default"
-    },
-    "disabled_signals": {
-        "description": "【信号过滤】禁用的 signal 列表",
-        "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",
-        "type": "list",
-        "default": [],
-        "items": {"type": "string"}
-    },
-    "hidden_user_ids": {
-        "description": "【v0.9.9】用户表中始终隐藏的 user_id",
-        "hint": "逗号分隔，例如 webchat,bot,astrbot。WebUI 设置里勾「过滤 webchat」时即应用此列表（不区分大小写）。",
-        "type": "string",
-        "default": "webchat"
-    },
-    "hidden_scope_patterns": {
-        "description": "【v0.9.10】群聊列表中始终隐藏的 scope_id 关键字",
-        "hint": "逗号分隔，例如 webchat:。WebUI 设置里勾「过滤 webchat 会话」时即应用此列表（子串匹配，不区分大小写）。",
-        "type": "string",
-        "default": "webchat:"
-    },
-    "active_window_seconds": {
-        "description": "【v0.9.20】活跃判定窗口（秒）",
-        "hint": "群最后消息距今多久算「活跃」。默认 1800 (30 分钟)。正常对话间隙通常 < 30 分钟；如果你希望更宽松可以改成 3600 (1 小时) 或 7200 (2 小时)。",
-        "type": "int",
-        "default": 1800
+    "signal_settings": {
+        "description": "信号与可见性",
+        "type": "object",
+        "hint": "禁用信号、隐藏用户/群聊（影响 Dashboard 显示与状态更新）",
+        "items": {
+            "disabled_signals": {
+                "description": "禁用的 signal 列表",
+                "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",
+                "type": "list",
+                "default": [],
+                "items": {"type": "string"}
+            },
+            "hidden_user_ids": {
+                "description": "用户表中始终隐藏的 user_id",
+                "hint": "逗号分隔，例如 webchat,bot,astrbot。WebUI 设置里勾「过滤 webchat」时即应用此列表（不区分大小写）。",
+                "type": "string",
+                "default": "webchat"
+            },
+            "hidden_scope_patterns": {
+                "description": "群聊列表中始终隐藏的 scope_id 关键字",
+                "hint": "逗号分隔，例如 webchat:。WebUI 设置里勾「过滤 webchat 会话」时即应用此列表（子串匹配，不区分大小写）。",
+                "type": "string",
+                "default": "webchat:"
+            }
+        }
     }
 }
