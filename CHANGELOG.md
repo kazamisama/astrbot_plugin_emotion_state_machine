@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.9.50 - 2026-06-26
+
+### Fixed
+
+- **Settings 菜单"过滤 webchat"checkbox 状态没同步**。v0.9.49 默认隐藏生效了，
+  但 checkbox 显示未勾选——因为 `bindSettingsMenu()` 在文件加载时同步过一次
+  checkbox（此时 `settings.filterBot=false`），随后 `load()` 异步拿到 health
+  并用 `filter_bot_default=true` 覆盖 settings，但 UI 没刷新。修复：抽
+  `syncSettingsCheckboxes()` 函数，load() 覆盖 settings 后重新调一次同步。
+
 ## v0.9.49 - 2026-06-26
 
 ### Fixed

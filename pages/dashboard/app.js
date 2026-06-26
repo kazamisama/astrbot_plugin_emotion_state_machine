@@ -512,6 +512,11 @@
         settings.filterBot = h.filter_bot_default;
         settings._esm_initialized = true;
         saveSettings();
+        // v0.9.50: re-sync the Settings menu checkbox — bindSettingsMenu
+        // already ran (sync was a no-op for filterBot=false at the time),
+        // so the visible UI would otherwise stay unchecked even though
+        // the actual filter logic now treats it as enabled.
+        syncSettingsCheckboxes();
       }
       state = await apiGet("state");
       setStatus("ok", "已连接");
@@ -599,6 +604,19 @@
     b.classList.toggle("opt-hide-version", !!settings.hideVersion);
     b.classList.toggle("opt-compact", !!settings.compact);
   }
+  var SETTINGS_CHECKBOX_MAP = {
+    "opt-hide-version": "hideVersion",
+    "opt-active-only": "activeOnly",
+    "opt-compact": "compact",
+    "opt-nonempty-only": "nonemptyOnly",
+    "opt-filter-bot": "filterBot",
+  };
+  function syncSettingsCheckboxes() {
+    Object.keys(SETTINGS_CHECKBOX_MAP).forEach(function(id) {
+      var cb = document.getElementById(id);
+      if (cb) cb.checked = !!settings[SETTINGS_CHECKBOX_MAP[id]];
+    });
+  }
   function bindSettingsMenu() {
     var btn = document.getElementById("settings-btn");
     var menu = document.getElementById("settings-menu");
@@ -606,17 +624,7 @@
     if (!btn || !menu) return;
 
     // Sync checkboxes with current settings
-    var map = {
-      "opt-hide-version": "hideVersion",
-      "opt-active-only": "activeOnly",
-      "opt-compact": "compact",
-      "opt-nonempty-only": "nonemptyOnly",
-      "opt-filter-bot": "filterBot",
-    };
-    Object.keys(map).forEach(function(id) {
-      var cb = document.getElementById(id);
-      if (cb) cb.checked = !!settings[map[id]];
-    });
+    syncSettingsCheckboxes();
 
     btn.addEventListener("click", function(e) {
       e.stopPropagation();
@@ -626,11 +634,11 @@
       if (wrap && !wrap.contains(e.target)) menu.hidden = true;
     });
 
-    Object.keys(map).forEach(function(id) {
+    Object.keys(SETTINGS_CHECKBOX_MAP).forEach(function(id) {
       var cb = document.getElementById(id);
       if (!cb) return;
       cb.addEventListener("change", function() {
-        settings[map[id]] = cb.checked;
+        settings[SETTINGS_CHECKBOX_MAP[id]] = cb.checked;
         applySettingsToBody();
         saveSettings();
         // Re-render to apply filter
