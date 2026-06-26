@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## v0.9.55 - 2026-06-26
+
+### Refactored
+
+- **撤销之前 v0.9.55 把英文 label key 直接改成中文的过度设计**。
+  改用分层架构：内部 key 保持英文（`calm` / `attached` 等稳定），
+  显示层通过 `emotion_engine/prompt.py` 里的 `LABEL_DISPLAY` dict
+  做英文 → 中文翻译映射。`format_snapshot` / `format_relation` /
+  `format_group_chart` / `format_relation_chart` / `format_combined_chart`
+  调用 `_display_label(label)` 输出中文。
+- 收益：
+  - 旧 `emotion_state.json` 向后兼容（label 仍是 `calm` 等英文）
+  - 跨模块比较稳定（`if relation.label == "attached"` 仍可用）
+  - 未来 i18n 只需扩展 LABEL_DISPLAY
+- 翻译表（内部 key → 显示）：
+  - calm→平静 annoyed→烦躁 hurt→受伤 tense→紧绷
+  - excited→兴奋 happy→开心 curious→好奇 quiet→安静
+  - neutral→中性 guarded→戒备 attached→亲近 trusted→信任
+  - irritated→易怒 unfamiliar→陌生
+
 ## v0.9.54 - 2026-06-26
 
 ### Changed
