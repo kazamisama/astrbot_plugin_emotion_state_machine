@@ -207,9 +207,9 @@ def build_prompt_block(
     relation_line = "towards_current_user: unavailable"
     if relation is not None:
         relation_line = (
-            f"towards_current_user: label={relation.label}, trust={relation.trust:.2f}, "
-            f"affection={relation.affection:.2f}, irritation={relation.irritation:.2f}, "
-            f"familiarity={relation.familiarity:.2f}"
+            f"towards_current_user: label={relation.label}, trust={relation.trust:.1f}, "
+            f"affection={relation.affection:.1f}, irritation={relation.irritation:.1f}, "
+            f"familiarity={relation.familiarity:.1f}"
         )
 
     p, a, d = compute_pad(group)
@@ -217,9 +217,9 @@ def build_prompt_block(
         "## Bot Emotion State\n"
         f"scope: {scope}\n"
         f"combined_label: {view.label}\n"
-        f"group: label={group.label}, valence={group.valence:.2f}, arousal={group.arousal:.2f}, "
-        f"stress={group.stress:.2f}, curiosity={group.curiosity:.2f}, active_users={len(group.active_users)}\n"
-        f"pad: P={p:.2f} A={a:.2f} D={d:.2f}\n"
+        f"group: label={group.label}, valence={group.valence:.1f}, arousal={group.arousal:.1f}, "
+        f"stress={group.stress:.1f}, curiosity={group.curiosity:.1f}, active_users={len(group.active_users)}\n"
+        f"pad: P={p:.1f} A={a:.1f} D={d:.1f}\n"
         f"{relation_line}\n"
         f"last_signal: group={group.last_signal}"
         + (f", user={relation.last_signal}" if relation is not None else "")

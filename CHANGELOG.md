@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.9.51 - 2026-06-26
+
+### Added
+
+- **Relation 分流**（`emotion_engine/machine.py` / `main.py:observe_message`）。
+  `apply_interaction(scope, user_id, event, *, update_relation=True)` 新增
+  `update_relation` 参数；`observe_text` 同步传递。`observe_message` 加
+  `apply_to_relation = mentioned or is_private` 判断——非 @bot、非私聊的群聊
+  普通消息只更新 group 情绪，不污染 user relation。修复"用户A骂用户B
+  让 bot 对 A 的 trust 下降"的语义悖论。后续 v0.9.52+ 可加
+  `bot_replied_recently` 触发条件（需 on_llm_response hook 追踪回复时间）。
+
+### Changed
+
+- **数值截断**（`emotion_engine/prompt.py:build_prompt_block`）。11 个数值字段
+  从 `.2f` 改成 `.1f`（valence / arousal / stress / curiosity / pad P/A/D /
+  trust / affection / irritation / familiarity）。LLM 对 0.56 vs 0.6 无感，
+  但 prefix cache 抖动减半——平静期 cache 命中率显著提升。
+
 ## v0.9.50 - 2026-06-26
 
 ### Fixed

@@ -498,12 +498,20 @@ class EmotionStateMachineStar(Star):
         scope = await self._scope_id(event)
         user_id = str(event.get_sender_id())
         mentioned = bool(getattr(event, "is_at_or_wake_command", False))
+        is_private = not event.get_group_id()
+        # v0.9.50: relation only updates when the message is actually
+        # directed at the bot (@/wake or private chat). Group chitchat
+        # still updates group atmosphere but not user relation.
+        # Future enhancement: also update when bot replied to this user
+        # recently (requires on_llm_response hook to track reply times).
+        apply_to_relation = mentioned or is_private
         # Filter the engine's inferred signals against the disabled list
         # before applying, so disabled signals never enter the state.
         disabled = self._get_disabled_signals()
         view = self.machine.observe_text(
             scope, text, user_id=user_id, mentioned=mentioned,
             disabled_signals=disabled if disabled else None,
+            update_relation=apply_to_relation,
         )
         logger.debug(
             "[emotion_state_machine] observed message | "
@@ -782,6 +790,7 @@ class EmotionStateMachineStar(Star):
         *,
         user_id: str = "",
         mentioned: bool = False,
+        update_relation: bool = True,
     ) -> CombinedEmotionView:
         """Infer signals from raw text and apply them to the state.
 
@@ -789,6 +798,9 @@ class EmotionStateMachineStar(Star):
         rather than a pre-classified signal name. Signals listed in the
         ``disabled_signals`` config are filtered out before application.
         Persists state.
+
+        v0.9.50: ``update_relation=False`` skips the relation layer — use
+        it when the message is not actually directed at the bot.
         """
         norm_scope = normalize_scope(scope)
         norm_user = normalize_user_id(user_id) if user_id else ""
@@ -798,6 +810,7 @@ class EmotionStateMachineStar(Star):
             user_id=norm_user or None,
             mentioned=mentioned,
             disabled_signals=disabled if disabled else None,
+            update_relation=update_relation,
         )
         self._save_state()
         return view

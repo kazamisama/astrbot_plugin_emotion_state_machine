@@ -341,7 +341,22 @@ class EmotionStateMachine:
             recent_signals=self.recent_signals.get(normalize_scope(scope)),
         )
 
-    def apply_interaction(self, scope: str, user_id: str | None, event: EmotionEvent) -> CombinedEmotionView:
+    def apply_interaction(
+        self,
+        scope: str,
+        user_id: str | None,
+        event: EmotionEvent,
+        *,
+        update_relation: bool = True,
+    ) -> CombinedEmotionView:
+        """Apply an event to group emotion, and optionally to user relation.
+
+        v0.9.50: ``update_relation=False`` skips writing to the user
+        relation snapshot but still updates the group layer. Callers use
+        this when the event is not actually "directed at" the bot (e.g.
+        users talking to each other in a group without mentioning bot).
+        Keeps group atmosphere consistent while not poisoning relation.
+        """
         scope = normalize_scope(scope)
         normalized_user = normalize_user_id(user_id) if user_id else ""
         group = self.get_group(scope, now=event.timestamp, apply_decay=True)
@@ -383,7 +398,7 @@ class EmotionStateMachine:
         group.transitions += 1
         group.label = derive_group_label(group)
 
-        if relation is not None:
+        if relation is not None and update_relation:
             apply_weights(relation, relation_deltas, intensity * relation_multiplier)
             relation.last_signal = event.signal
             relation.last_reason = event.reason or event.signal
@@ -407,12 +422,17 @@ class EmotionStateMachine:
         mentioned: bool = False,
         timestamp: float | None = None,
         disabled_signals: set[str] | None = None,
+        update_relation: bool = True,
     ) -> CombinedEmotionView:
         """Infer one or more signals from a plain message and apply them.
 
         ``disabled_signals``, when provided, is a set of lowercased signal
         names that must be filtered out before application. Passing
         ``None`` (the default) means no filtering.
+
+        v0.9.50: ``update_relation=False`` propagates to ``apply_interaction``
+        so non-bot-directed messages don't pollute user-relation snapshots.
+        Group atmosphere is still updated.
 
         v0.9.19: even when no signal is inferred (plain chat like "hi",
         "ok"), we still update ``active_users`` so the frontend's
@@ -450,6 +470,7 @@ class EmotionStateMachine:
                 scope,
                 user_id,
                 EmotionEvent(signal=signal, intensity=1.0, reason=reason, timestamp=now),
+                update_relation=update_relation,
             )
         return view if view is not None else CombinedEmotionView(
             scope=scope, user_id=normalized_user, group=group, relation=None,
