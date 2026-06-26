@@ -37,7 +37,7 @@
             },
             "emotion_block_template": {
                 "description": "v0.9.52+ 情绪块模板（高级）",
-                "hint": "可编辑。默认模板见 DEFAULT_EMOTION_BLOCK_TEMPLATE。可用占位符：{scope} {combined_label} {style_hint} {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users} {pad_p} {pad_a} {pad_d} {relation_block} {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity} {group_last_signal} {relation_last_signal}。如需输出字面大括号请用 {{ 与 }}。留空 = 用内置默认模板。",
+                "hint": "可编辑。默认模板为中文版（情绪状态 / 群情绪 / PAD / 风格提示等）。可用占位符：{scope} {combined_label} {style_hint} {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users} {pad_p} {pad_a} {pad_d} {relation_block} {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity} {group_last_signal} {relation_last_signal}。如需输出字面大括号请用 {{ 与 }}。留空 = 用内置默认模板（中文）。",
                 "type": "text",
                 "default": ""
             },

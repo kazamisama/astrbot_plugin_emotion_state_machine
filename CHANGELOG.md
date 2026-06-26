@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v0.9.53 - 2026-06-26
+
+### Changed
+
+- **默认情绪块模板改为中文版**（`emotion_engine/prompt.py`）。`DEFAULT_EMOTION_BLOCK_TEMPLATE`
+  从英文 (`## Bot Emotion State / scope / combined_label / group / ...`) 改为
+  中文 (`## 情绪状态 / 作用域 / 综合标签 / 群情绪 / ...`)。`relation_block`
+  也跟着中文化：`towards_current_user` → `对当前用户`，`trust` → `信任`，
+  `affection` → `好感`，`irritation` → `焦虚`，`familiarity` → `熟悉度`，
+  `unavailable` → `无关系数据`。英文标签（calm/attached 等）和
+  style_hint（balanced and natural）保持不变——这些是 labels 模块的
+  查表结果，需要单独翻译 labels.py 才能全中文化。`_conf_schema.json`
+  的 `emotion_block_template` hint 同步标注「默认中文」。
+
 ## v0.9.52 - 2026-06-26
 
 ### Added

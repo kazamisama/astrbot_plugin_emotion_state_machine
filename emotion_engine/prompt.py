@@ -45,7 +45,7 @@ ESM_BLOCK_END = "<!-- esm:emotion-block:end -->"
 def format_snapshot(scope: str, snapshot: GroupEmotionSnapshot) -> str:
     age = max(0.0, time.time() - snapshot.updated_at)
     return (
-        f"🧭 Group Emotion | {scope}\n"
+        f"ðŸ§­ Group Emotion | {scope}\n"
         f"- label: {snapshot.label}\n"
         f"- valence: {snapshot.valence:.2f}\n"
         f"- arousal: {snapshot.arousal:.2f}\n"
@@ -62,7 +62,7 @@ def format_snapshot(scope: str, snapshot: GroupEmotionSnapshot) -> str:
 def format_relation(scope: str, user_id: str, snapshot: UserRelationSnapshot) -> str:
     age = max(0.0, time.time() - snapshot.updated_at)
     return (
-        f"👤 User Relation | {scope} / {user_id}\n"
+        f"ðŸ‘¤ User Relation | {scope} / {user_id}\n"
         f"- label: {snapshot.label}\n"
         f"- trust: {snapshot.trust:.2f}\n"
         f"- affection: {snapshot.affection:.2f}\n"
@@ -114,7 +114,7 @@ _BAR_EMPTY = "\u2591"   # light shade
 def _bar(value: float, width: int = _BAR_WIDTH) -> str:
     """Render a horizontal bar ``width`` chars wide.
 
-    Example: ``_bar(0.75)`` -> ``"███████░░░"``.
+    Example: ``_bar(0.75)`` -> ``"â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘"``.
     """
     filled = max(0, min(width, int(value * width + 0.5)))
     return _BAR_FILLED * filled + _BAR_EMPTY * (width - filled)
@@ -126,16 +126,16 @@ def format_group_chart(scope: str, snapshot: GroupEmotionSnapshot) -> str:
     Output looks like::
 
         Group Emotion | 123456
-          valence      ████████░░ 0.78  happy
-          arousal      ██████░░░░ 0.55
-          stress       ███░░░░░░░ 0.30
-          curiosity    █████████░ 0.85
+          valence      â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘ 0.78  happy
+          arousal      â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘ 0.55
+          stress       â–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘ 0.30
+          curiosity    â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘ 0.85
           PAD: P=0.78 A=0.55 D=0.70
     """
     p, a, d = compute_pad(snapshot)
     age = max(0.0, time.time() - snapshot.updated_at)
     lines = [
-        f"🧭 Group Emotion | {scope}",
+        f"ðŸ§­ Group Emotion | {scope}",
         f"  valence   {_bar(snapshot.valence)} {snapshot.valence:.2f}  {snapshot.label}",
         f"  arousal   {_bar(snapshot.arousal)} {snapshot.arousal:.2f}",
         f"  stress    {_bar(snapshot.stress)} {snapshot.stress:.2f}",
@@ -153,14 +153,14 @@ def format_relation_chart(scope: str, user_id: str, snapshot: UserRelationSnapsh
     Output looks like::
 
         User Relation | 123456 / user-a
-          trust        ████████░░ 0.78  trusted
-          affection    █████████░ 0.92
-          irritation   ██░░░░░░░░ 0.15
-          familiarity  ██████░░░░ 0.62
+          trust        â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘ 0.78  trusted
+          affection    â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘ 0.92
+          irritation   â–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘ 0.15
+          familiarity  â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘ 0.62
     """
     age = max(0.0, time.time() - snapshot.updated_at)
     lines = [
-        f"👤 User Relation | {scope} / {user_id}",
+        f"ðŸ‘¤ User Relation | {scope} / {user_id}",
         f"  trust       {_bar(snapshot.trust)} {snapshot.trust:.2f}  {snapshot.label}",
         f"  affection   {_bar(snapshot.affection)} {snapshot.affection:.2f}",
         f"  irritation  {_bar(snapshot.irritation)} {snapshot.irritation:.2f}",
@@ -184,26 +184,26 @@ def format_combined_chart(view: CombinedEmotionView) -> str:
 # Prompt block
 # ---------------------------------------------------------------------------
 
-# v0.9.52: default template � overridable via _conf_schema.json's
+# v0.9.52: default template — overridable via _conf_schema.json's
 # `emotion_block_template` field. Available placeholders:
 #   {scope} {combined_label} {style_hint}
 #   {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users}
 #   {pad_p} {pad_a} {pad_d}
 #   {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity}
 #   {group_last_signal} {relation_last_signal}
-#   {relation_block} � pre-formatted multi-line block (label + 4 dims) or
+#   {relation_block} — pre-formatted multi-line block (label + 4 dims) or
 #     the literal string "towards_current_user: unavailable" when no relation.
 DEFAULT_EMOTION_BLOCK_TEMPLATE = (
-    "## Bot Emotion State\n"
-    "scope: {scope}\n"
-    "combined_label: {combined_label}\n"
-    "group: label={group_label}, valence={group_valence}, arousal={group_arousal}, "
-    "stress={group_stress}, curiosity={group_curiosity}, active_users={active_users}\n"
-    "pad: P={pad_p} A={pad_a} D={pad_d}\n"
+    "\u60c5\u7eea\u72b6\u6001\n"
+    "\u4f5c\u7528\u57df: {scope}\n"
+    "\u7efc\u5408\u6807\u7b7e: {combined_label}\n"
+    "\u7fa4\u60c5\u7eea: \u6807\u7b7e={group_label}, \u6109\u60a6\u5ea6={group_valence}, \u5524\u9192\u5ea6={group_arousal}, "
+    "\u538b\u529b={group_stress}, \u597d\u5947\u5fc3={group_curiosity}, \u6d3b\u8dc3\u7528\u6237={active_users}\n"
+    "PAD: \u6109\u60a6={pad_p} \u5524\u9192={pad_a} \u652f\u914d={pad_d}\n"
     "{relation_block}\n"
-    "last_signal: group={group_last_signal}, user={relation_last_signal}\n"
-    "style_hint: {style_hint}\n"
-    "Use this as subtle continuity only. Do not mention numeric scores unless explicitly asked."
+    "\u6700\u8fd1\u4fe1\u53f7: \u7fa4={group_last_signal}, \u7528\u6237={relation_last_signal}\n"
+    "\u98ce\u683c\u63d0\u793a: {style_hint}\n"
+    "\u4ec5\u4f5c\u4e3a\u8bed\u6c14\u8fde\u7eed\u6027\u7684\u53c2\u8003\u3002\u9664\u975e\u7528\u6237\u660e\u786e\u8981\u6c42\uff0c\u5426\u5219\u4e0d\u8981\u4e3b\u52a8\u63d0\u53ca\u6570\u503c\u3002"
 )
 
 
@@ -223,9 +223,9 @@ def _build_emotion_block_variables(
 
     if relation is not None:
         relation_block = (
-            f"towards_current_user: label={relation.label}, "
-            f"trust={relation.trust:.1f}, affection={relation.affection:.1f}, "
-            f"irritation={relation.irritation:.1f}, familiarity={relation.familiarity:.1f}"
+            f"\u5bf9\u5f53\u524d\u7528\u6237: \u5173\u7cfb\u6807\u7b7e={relation.label}, "
+            f"\u4fe1\u4efb={relation.trust:.1f}, \u597d\u611f={relation.affection:.1f}, "
+            f"\u7126\u865a={relation.irritation:.1f}, \u719f\u6089\u5ea6={relation.familiarity:.1f}"
         )
         relation_label = relation.label
         relation_trust = round(relation.trust, 1)
@@ -234,7 +234,7 @@ def _build_emotion_block_variables(
         relation_familiarity = round(relation.familiarity, 1)
         relation_last_signal = relation.last_signal
     else:
-        relation_block = "towards_current_user: unavailable"
+        relation_block = "\u5bf9\u5f53\u524d\u7528\u6237: \u65e0\u5173\u7cfb\u6570\u636e"
         relation_label = "n/a"
         relation_trust = relation_affection = relation_irritation = relation_familiarity = "n/a"
         relation_last_signal = "-"
