@@ -37,16 +37,20 @@
             },
             "emotion_block_template": {
                 "description": "v0.9.52+ 情绪块模板（高级）",
-                "hint": "可编辑。默认模板为中文版（情绪状态 / 群情绪 / PAD / 风格提示等）。可用占位符：{scope} {combined_label} {style_hint} {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users} {pad_p} {pad_a} {pad_d} {relation_block} {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity} {group_last_signal} {relation_last_signal}。如需输出字面大括号请用 {{ 与 }}。留空 = 用内置默认模板（中文）。",
+                "hint": "可编辑。默认即为下方内容，预填充内置默认模板，用户在 Dashboard 编辑时会自动以中文默认模板为基础。支持 20 个占位符：{scope} {combined_label} {style_hint} {group_label} {group_valence} {group_arousal} {group_stress} {group_curiosity} {active_users} {pad_p} {pad_a} {pad_d} {relation_block} {relation_label} {relation_trust} {relation_affection} {relation_irritation} {relation_familiarity} {group_last_signal} {relation_last_signal}。如需输出字面大括号请用 {{ 与 }}。修改后只影响后续注入的 block——内部 label key（calm/attached 等）和 _display_label 翻译层不受影响。",
                 "type": "text",
-                "default": ""
+                "default": "情绪状态\n作用域: {scope}\n综合标签: {combined_label}\n群情绪: 标签={group_label}, 愉悦度={group_valence}, 唤醒度={group_arousal}, 压力={group_stress}, 好奇心={group_curiosity}, 活跃用户={active_users}\nPAD: 愉悦={pad_p} 唤醒={pad_a} 支配={pad_d}\n{relation_block}\n最近信号: 群={group_last_signal}, 用户={relation_last_signal}\n风格提示: {style_hint}\n仅作为语气连续性的参考。除非用户明确要求，否则不要主动提及数值。"
             },
             "appraisal_mode": {
                 "description": "情绪评价模式",
                 "hint": "direct = v0.4.0 直接查表行为（默认，最稳定）；occ_static = 静态 OCC 评价变量转维度；occ_heuristic = OCC + 启发式（文本特征/群状态/用户关系）。切换到 occ 模式后维度量级与 direct 略有不同但方向一致。",
                 "type": "string",
                 "default": "direct",
-                "options": ["direct", "occ_static", "occ_heuristic"]
+                "options": [
+                    "direct",
+                    "occ_static",
+                    "occ_heuristic"
+                ]
             },
             "persona_isolation_enabled": {
                 "description": "人格隔离（v0.9.48 起改为开关，默认开启）",
@@ -128,7 +132,9 @@
                 "hint": "填入要禁用的 signal 名（如 poke / pressure），禁用后 infer_signals 不再触发，手动 apply_signal 也会被拒绝。留空 = 不禁用任何 signal。",
                 "type": "list",
                 "default": [],
-                "items": {"type": "string"}
+                "items": {
+                    "type": "string"
+                }
             },
             "hidden_user_ids": {
                 "description": "用户表中始终隐藏的 user_id",

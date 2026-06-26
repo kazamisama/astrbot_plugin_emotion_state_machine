@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.9.56 - 2026-06-26
+
+### Changed
+
+- **情绪块模板配置预填充默认模板**（`_conf_schema.json`）。
+  `emotion_block_template` 的 `default` 从空字符串改为
+  `DEFAULT_EMOTION_BLOCK_TEMPLATE` 的实际内容。这样在 AstrBot Dashboard
+  编辑此配置时，会自动以中文默认模板为起点——直接改就行，不需要
+  从空白开始写。hint 也补充说明：修改后只影响后续注入的 block，
+  内部 label key 和 `_display_label` 翻译层不受影响。
+
 ## v0.9.55 - 2026-06-26
 
 ### Refactored
