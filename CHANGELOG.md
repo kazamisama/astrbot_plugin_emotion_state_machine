@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.9.57 - 2026-06-26
+
+### Changed
+
+- **`inject_enabled` 字段的 hint 改写清楚**（`_conf_schema.json`）。
+  说明：注入位置（user 消息末尾）、注入内容（群氛围+用户关系+风格提示）、
+  注入示例 block、关闭后仍评估但不注入、v0.9.46 之后不再污染 LLM
+  prefix cache。之前 hint 是一句「注入内容很短，只作为语气连续性参考」，
+  用户看不到实际产出。
+
 ## v0.9.56 - 2026-06-26
 
 ### Changed

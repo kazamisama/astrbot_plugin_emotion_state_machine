@@ -31,7 +31,7 @@
         "items": {
             "inject_enabled": {
                 "description": "在 LLM 请求前注入情绪状态摘要",
-                "hint": "注入内容很短，只作为语气连续性参考；不会要求模型明说数值",
+                "hint": "开启后，每次 AstrBot 调用 LLM 之前，插件都会把当前群聊氛围（valence/arousal/stress/curiosity）和 bot 对当前用户的关系（trust/affection/irritation/familiarity）作为额外内容块追加到 user 消息末尾。注入内容会附带风格提示（如「平和自然」），让 LLM 根据当前情绪自动调整语气、保持长期连续性。\n\n示例（追加在 user 消息「帮我写首诗」后面）：\n<!-- esm:emotion-block:start -->\n## 情绪状态\n作用域: group-123\n综合标签: 平静\n群情绪: 标签=平静, 愉悦度=0.5, 唤醒度=0.5, 压力=0.2, 好奇心=0.6, 活跃用户=1\nPAD: 愉悦=0.5 唤醒=0.5 支配=0.8\n对当前用户: 关系标签=陌生, 信任=0.6, 好感=0.5, 焦虑=0.2, 熟悉度=0.1\n最近信号: 群=mention, 用户=mention\n风格提示: 平和自然\n仅作为语气连续性的参考。除非用户明确要求，否则不要主动提及数值。\n<!-- esm:emotion-block:end -->\n\n关闭后，状态机仍会继续评估并保存情绪数据，只是不再注入到 prompt 中。注入位置 v0.9.46 起改为 user 消息末尾（不影响 LLM prefix cache）。",
                 "type": "bool",
                 "default": true
             },
