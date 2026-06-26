@@ -499,7 +499,7 @@ class EmotionStateMachineStar(Star):
         user_id = str(event.get_sender_id())
         mentioned = bool(getattr(event, "is_at_or_wake_command", False))
         is_private = not event.get_group_id()
-        # v0.9.50: relation only updates when the message is actually
+        # v0.9.51: relation only updates when the message is actually
         # directed at the bot (@/wake or private chat). Group chitchat
         # still updates group atmosphere but not user relation.
         # Future enhancement: also update when bot replied to this user
@@ -807,7 +807,7 @@ class EmotionStateMachineStar(Star):
         ``disabled_signals`` config are filtered out before application.
         Persists state.
 
-        v0.9.50: ``update_relation=False`` skips the relation layer — use
+        v0.9.51: ``update_relation=False`` skips the relation layer — use
         it when the message is not actually directed at the bot.
         """
         norm_scope = normalize_scope(scope)

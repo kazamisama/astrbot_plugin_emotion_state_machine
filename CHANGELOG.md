@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.9.58 - 2026-06-26
+
+### Fixed
+
+- **注释里的版本号漂移**：`emotion_engine/machine.py` 和 `main.py`
+  中 4 处 `v0.9.50` 注释（关于 `update_relation` 功能的）实际功能
+  在 v0.9.51 才发布，统一为 `v0.9.51`。代码行为不变。
+
 ## v0.9.57 - 2026-06-26
 
 ### Changed

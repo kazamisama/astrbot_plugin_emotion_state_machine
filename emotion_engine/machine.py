@@ -351,7 +351,7 @@ class EmotionStateMachine:
     ) -> CombinedEmotionView:
         """Apply an event to group emotion, and optionally to user relation.
 
-        v0.9.50: ``update_relation=False`` skips writing to the user
+        v0.9.51: ``update_relation=False`` skips writing to the user
         relation snapshot but still updates the group layer. Callers use
         this when the event is not actually "directed at" the bot (e.g.
         users talking to each other in a group without mentioning bot).
@@ -430,7 +430,7 @@ class EmotionStateMachine:
         names that must be filtered out before application. Passing
         ``None`` (the default) means no filtering.
 
-        v0.9.50: ``update_relation=False`` propagates to ``apply_interaction``
+        v0.9.51: ``update_relation=False`` propagates to ``apply_interaction``
         so non-bot-directed messages don't pollute user-relation snapshots.
         Group atmosphere is still updated.
 
