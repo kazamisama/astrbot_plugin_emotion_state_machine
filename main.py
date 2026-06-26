@@ -17,6 +17,7 @@ from pathlib import Path
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
+from astrbot.core.agent.message import TextPart
 from astrbot.core.config.astrbot_config import AstrBotConfig
 
 try:
@@ -510,15 +511,17 @@ class EmotionStateMachineStar(Star):
     async def on_llm_request(self, event: AstrMessageEvent, request):
         """Inject a compact emotion state block before LLM requests.
 
-        Uses sentinel-wrapped blocks so re-injection replaces the prior
-        block in place instead of stacking duplicates. Safe to call
-        multiple times on the same request.
+        v0.9.x migration: switched from ``request.system_prompt += block``
+        to ``request.extra_user_content_parts.append(TextPart(...))``.
+        The latter appends to the **user message** rather than the system
+        prompt, which preserves LLM prefix cache (the dynamic emotion
+        block no longer pollutes the cacheable system prompt prefix) and
+        matches AstrBot's official pattern for "system reminders inside
+        user messages" (see ``astr_main_agent._append_image_caption``).
         """
         if not self._cfg_bool("enabled", True):
             return
         if not self._cfg_bool("inject_enabled", True):
-            return
-        if not hasattr(request, "system_prompt"):
             return
         if self._cfg_bool("only_group", True) and not event.get_group_id():
             return
@@ -527,9 +530,20 @@ class EmotionStateMachineStar(Star):
         user_id = str(event.get_sender_id() or "")
         view = self.machine.get_combined(scope, user_id)
         block = build_prompt_block(scope, view)
-        request.system_prompt = _inject_emotion_block(
-            request.system_prompt or "", block
-        )
+        # Append to extra_user_content_parts (not system_prompt) so the
+        # dynamic block lands inside the user message rather than the
+        # system prompt, keeping the LLM prefix cache intact.
+        if hasattr(request, "extra_user_content_parts"):
+            request.extra_user_content_parts.append(
+                TextPart(text=block, type="text")
+            )
+        elif hasattr(request, "system_prompt"):
+            # Fallback for older AstrBot versions that don't expose
+            # extra_user_content_parts. Falls back to the legacy sentinel
+            # pattern (cache pollution accepted as graceful degradation).
+            request.system_prompt = _inject_emotion_block(
+                request.system_prompt or "", block
+            )
 
     def _render_config_snapshot(self) -> str:
         """Render a compact, human-readable snapshot of the effective

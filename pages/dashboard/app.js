@@ -354,7 +354,7 @@
     // (e.g. webchat: sessions) are also hidden when filterBot is on.
     var scopes = state.scopes.filter(shouldShowGroup);
     var html = '<div class="users-row head">' +
-      '<div>用户 ID</div><div>' + esc(dimLabel("trust")) + '</div>' +
+      '<div>用户 ID</div><div>人格</div><div>' + esc(dimLabel("trust")) + '</div>' +
       '<div>' + esc(dimLabel("affection")) + '</div>' +
       '<div>' + esc(dimLabel("irritation")) + '</div>' +
       '<div>' + esc(dimLabel("familiarity")) + '</div>' +
@@ -386,8 +386,10 @@
           var shortSc = sc.length > 14 ? sc.slice(0, 12) + "…" : sc;
           scopeTag = ' <span style="color:var(--text-3);font-size:0.7rem" title="' + esc(sc) + '">@' + esc(shortSc) + '</span>';
         }
+        var personaName = (parts && parts[1]) || "(无)";
         html += '<div class="users-row">' +
           '<div class="user-id" title="' + esc(u.user_id) + '">' + esc(u.user_id) + scopeTag + '</div>' +
+          '<div title="' + esc(s.scope) + '" style="font-size:0.78rem;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(personaName) + '</div>' +
           '<div>' + dimCellHTML("trust", u.trust) + '</div>' +
           '<div>' + dimCellHTML("affection", u.affection) + '</div>' +
           '<div>' + dimCellHTML("irritation", u.irritation) + '</div>' +

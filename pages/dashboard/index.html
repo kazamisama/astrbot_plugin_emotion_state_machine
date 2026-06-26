@@ -171,8 +171,7 @@
   .section-head h2 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text); }
   .input, .select { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-size: 0.85rem; font-family: inherit; }
   .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-  .group-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-1); cursor: pointer; position: relative; }
-  .group-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--mood-color, var(--text-3)); }
+  .group-card { background: var(--card); border: 1px solid var(--border); border-top: 3px solid var(--mood-color, var(--text-3)); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-1); cursor: pointer; position: relative; }
   .group-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
   .group-card:hover .del-btn { opacity: 1; }
   .del-btn {
@@ -202,7 +201,7 @@
   .group-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); font-size: 0.75rem; color: var(--text-2); display: flex; justify-content: space-between; }
   .group-users-count { color: var(--accent); font-weight: 600; }
   .users-table { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-1); }
-  .users-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 0.8fr 1.2fr; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border-soft); font-size: 0.85rem; }
+  .users-row { display: grid; grid-template-columns: 1.5fr 0.8fr 1fr 1fr 1fr 1fr 0.8fr 1.2fr; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border-soft); font-size: 0.85rem; }
   .users-row.head { background: var(--border-soft); font-size: 0.72rem; font-weight: 600; color: var(--text-2); text-transform: uppercase; }
   .empty { text-align: center; padding: 60px 20px; background: var(--card); border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-2); }
   .empty-illustration { font-size: 56px; margin-bottom: 12px; }
@@ -438,6 +437,6 @@
     </footer>
   </main>
 </div>
-<script src="./app.js?v=0.9.45"></script>
+<script src="./app.js?v=0.9.46"></script>
 </body>
 </html>

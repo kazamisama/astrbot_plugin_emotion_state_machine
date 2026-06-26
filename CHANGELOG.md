@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.9.46 - 2026-06-26
+
+### Changed
+
+- **情绪块注入迁移到 `extra_user_content_parts`**（`main.py:on_llm_request`）。
+  之前 ESM 把情绪块拼到 `request.system_prompt` 末尾，导致每条消息的动态数值（V/A/S/C + T/Aff/Irr/Fam）污染 LLM prefix cache（OpenAI 自动缓存、Anthropic cache_control、DeepSeek/vLLM prefix cache 全军覆没）。新方案把块作为 `TextPart` 追加到 `request.extra_user_content_parts`——这是 AstrBot 官方推荐机制（参见 `astr_main_agent._append_image_caption`），块落在 user 消息之后，**不污染 prefix cache**，且 LLM 在生成前最后看到状态（近因效应）。旧版 AstrBot 没暴露 `extra_user_content_parts` 时自动 fallback 到原 system_prompt 路径。
+- **用户表加"人格"列**（`app.js:showUserTable`）。从 `splitScope(scope)[1]` 取 persona stamp，无 stamp 时显示 `(无)`。CSS grid 从 7 列改 8 列。
+- **群聊卡片顶部色条改用 `border-top`**（`index.html:.group-card`）。删 `::before` 伪元素——直角矩形与卡片圆角视觉脱节；`border` 天然跟 `border-radius` 协调。
+
 ## v0.8.2 - 2026-06-24
 
 ### Changed
