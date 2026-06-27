@@ -204,6 +204,7 @@ class TalkWillingnessState:
     def __init__(
         self,
         config_getter: Callable[[str, Any], Any] | None = None,
+        energy_getter: Callable[[], float] | None = None,
     ) -> None:
         # config_getter lets the plugin pass in ``self._cfg_str`` /
         # ``self._cfg_float`` so all thresholds come from
@@ -211,6 +212,15 @@ class TalkWillingnessState:
         self._cfg: Callable[[str, Any], Any] = (
             config_getter if config_getter is not None
             else lambda key, default: default
+        )
+        # energy_getter returns a 0..1 "bot energy" value each tick.
+        # 1.0 = neutral (no modulation). Default lambda returns 1.0 so
+        # TalkWillingness behaves identically when no energy system is
+        # registered. The plugin can pass a callable that queries an
+        # "energy_system" star; when that star is absent the callable
+        # itself should return 1.0 to preserve neutrality.
+        self._energy: Callable[[], float] = (
+            energy_getter if energy_getter is not None else (lambda: 1.0)
         )
         self._states: dict[str, _TalkWillingness] = {}
 
@@ -282,6 +292,10 @@ class TalkWillingnessState:
             + self._turn_charge(user_turns_in_5min, elapsed)
             + self._emotion_charge(group_view)
         )
+        # v0.10.0+ optional modulation factors. Both default to 1.0
+        # (neutral) so behavior is unchanged when the inputs are
+        # absent (no energy system registered / no active_users info).
+        net_charge *= self._energy_factor() * self._crowd_factor(group_view)
         state.W += net_charge
 
         # Threshold decision — also mutates state.consecutive_apply
@@ -358,6 +372,60 @@ class TalkWillingnessState:
         curiosity = float(getattr(view, "curiosity", 0.5))
         scale = self.EMOTION_CHARGE_SCALE
         return (arousal - 0.5) * scale + (curiosity - 0.5) * scale
+
+    # ------------------------------------------------------------------
+    # Optional modulation factors (v0.10.0+, opt-in via config)
+    # ------------------------------------------------------------------
+
+    def _energy_factor(self) -> float:
+        """v0.10.0+ energy modulation.
+
+        Maps a 0..1 "bot energy" reading (from the optional
+        energy_getter callable passed to ``__init__``) to a multiplier
+        on net_charge in ``[0.5, 1.0]``. Energy=1.0 → factor 1.0
+        (no modulation); energy=0.0 → factor 0.5 (half accumulation).
+
+        If no energy_getter is registered, ``self._energy`` returns
+        1.0 by default → factor=1.0 → no effect on accumulation.
+        """
+        try:
+            energy = float(self._energy())
+        except Exception:
+            # Defensive: any failure in the energy source must NOT
+            # break the tick path. Fall back to neutral.
+            return 1.0
+        if not math.isfinite(energy):
+            return 1.0
+        # Clamp to [0, 1] before mapping.
+        energy = max(0.0, min(1.0, energy))
+        return 0.5 + energy * 0.5
+
+    def _crowd_factor(self, view: Any) -> float:
+        """v0.10.0+ crowd-size modulation.
+
+        Returns ``1 / sqrt(active_users)``, clamped to ``[0.1, 1.0]``.
+        Larger groups → smaller factor → bot accumulates W more
+        slowly, so proactive self-reply feels less noisy in busy
+        rooms. 1-person (DMs / solo) → 1.0 (no modulation).
+
+        Tolerant of group views that don't expose ``active_users``:
+        returns 1.0 (neutral) when the attribute is missing or empty.
+        """
+        active = 0
+        au = getattr(view, "active_users", None)
+        if isinstance(au, dict):
+            active = len(au)
+        elif isinstance(au, (int, float)):
+            active = int(au)
+        elif au is not None and hasattr(au, "__len__"):
+            try:
+                active = len(au)
+            except Exception:
+                active = 0
+        if active <= 1:
+            return 1.0
+        raw = 1.0 / math.sqrt(active)
+        return max(0.1, min(1.0, raw))
 
     # ------------------------------------------------------------------
     # Threshold logic (private)
@@ -438,6 +506,7 @@ class EmotionStateMachineStar(Star):
         # class lives just above the Star class definition.
         self._talk_willingness = TalkWillingnessState(
             config_getter=self.config.get,
+            energy_getter=self._get_bot_energy,
         )
         # Per-scope user-message timestamp tracking — feeds the time
         # factor ("how long since user spoke?") and the turn-density
@@ -1488,6 +1557,48 @@ class EmotionStateMachineStar(Star):
         turn_log = getattr(self, "_user_turn_ts", None)
         if turn_log is not None:
             turn_log.pop(scope, None)
+
+    def _get_bot_energy(self) -> float:
+        """v0.10.0+ optional hook: query a registered "energy" star for
+        the bot's current energy reading.
+
+        Returns a value in ``[0.0, 1.0]``. Convention:
+
+        - ``1.0`` means "fully rested / neutral" → no modulation on
+          self-reply accumulation (TalkWillingness treats 1.0 as the
+          identity multiplier).
+        - ``0.0`` means "fully depleted" → TalkWillingness halves the
+          accumulation rate so bot is less likely to self-reply when
+          tired.
+
+        If no ``astrbot_plugin_energy_system`` star is registered, this
+        returns ``1.0`` (neutral) so behavior is bit-identical to
+        pre-extension versions. Any exception during lookup is caught
+        and falls back to 1.0 — the energy hook must never break the
+        self-reply decision path.
+        """
+        # Lazy import to avoid a hard dependency on a specific plugin
+        # name at module load time.
+        try:
+            energy_star = self.context.get_registered_star(
+                "astrbot_plugin_energy_system",
+            )
+        except Exception:
+            return 1.0
+        if energy_star is None:
+            return 1.0
+        # Convention: the energy star exposes a `get_bot_energy()` method
+        # returning a float in [0, 1]. If it doesn't, fall back to 1.0.
+        getter = getattr(energy_star, "get_bot_energy", None)
+        if not callable(getter):
+            return 1.0
+        try:
+            val = float(getter())
+        except Exception:
+            return 1.0
+        if not math.isfinite(val):
+            return 1.0
+        return max(0.0, min(1.0, val))
 
     def render_state_text(self, scope: str, user_id: str = "") -> str:
         """Human-readable rendering of the current state, identical to the

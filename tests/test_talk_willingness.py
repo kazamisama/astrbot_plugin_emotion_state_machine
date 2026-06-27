@@ -549,3 +549,123 @@ def test_disabled_signals_in_apply_self_reply_skips() -> None:
         group_view=_neutral_view(), user_turns_in_5min=0,
     )
     assert should_apply
+
+
+# ----------------------------------------------------------------------
+# Optional modulation factors (v0.10.0+)
+# ----------------------------------------------------------------------
+
+
+def test_energy_factor_default_is_neutral() -> None:
+    """Without an energy_getter, the factor is 1.0 (neutral)."""
+    tw = TalkWillingnessState()
+    assert tw._energy_factor() == 1.0
+
+
+def test_energy_factor_zero_halves_accumulation() -> None:
+    """energy=0.0 → factor 0.5. Energy=1.0 → factor 1.0."""
+    tw = TalkWillingnessState(energy_getter=lambda: 0.0)
+    assert tw._energy_factor() == pytest.approx(0.5)
+    tw._energy = lambda: 1.0
+    assert tw._energy_factor() == pytest.approx(1.0)
+    tw._energy = lambda: 0.5
+    assert tw._energy_factor() == pytest.approx(0.75)
+
+
+def test_energy_factor_clamps_to_unit_range() -> None:
+    """Energy values outside [0, 1] must be clamped, not propagated."""
+    tw = TalkWillingnessState(energy_getter=lambda: 1.5)
+    assert tw._energy_factor() == pytest.approx(1.0)
+    tw._energy = lambda: -0.3
+    assert tw._energy_factor() == pytest.approx(0.5)
+
+
+def test_energy_factor_handles_nonfinite_and_exceptions() -> None:
+    """NaN / inf / exceptions in energy_getter fall back to neutral."""
+    tw = TalkWillingnessState(energy_getter=lambda: float("nan"))
+    assert tw._energy_factor() == 1.0
+    tw._energy = lambda: float("inf")
+    assert tw._energy_factor() == 1.0
+    def boom(): raise RuntimeError("energy system down")
+    tw._energy = boom
+    assert tw._energy_factor() == 1.0
+
+
+def test_crowd_factor_default_is_neutral() -> None:
+    """No active_users info → factor 1.0 (neutral)."""
+    tw = TalkWillingnessState()
+    assert tw._crowd_factor(_neutral_view()) == 1.0
+
+
+def test_crowd_factor_scales_with_active_users() -> None:
+    """1/sqrt(N) where N = active users count, clamped to [0.1, 1.0]."""
+    tw = TalkWillingnessState()
+
+    class ViewWithUsers(_FakeGroupView):
+        def __init__(self, n: int):
+            super().__init__()
+            self.active_users = {f"u{i}": 1 for i in range(n)}
+
+    assert tw._crowd_factor(ViewWithUsers(1)) == 1.0  # 1 person: no mod
+    assert tw._crowd_factor(ViewWithUsers(4)) == pytest.approx(0.5)
+    assert tw._crowd_factor(ViewWithUsers(25)) == pytest.approx(0.2)
+    assert tw._crowd_factor(ViewWithUsers(100)) == pytest.approx(0.1)
+
+
+def test_crowd_factor_floor_at_01() -> None:
+    """For huge groups, factor clamps at 0.1 (never zero)."""
+    tw = TalkWillingnessState()
+
+    class ViewWithUsers(_FakeGroupView):
+        def __init__(self, n: int):
+            super().__init__()
+            self.active_users = {f"u{i}": 1 for i in range(n)}
+
+    assert tw._crowd_factor(ViewWithUsers(10000)) == 0.1
+
+
+def test_crowd_factor_tolerates_dict_count_and_attribute_missing() -> None:
+    """active_users can be a dict, an int, or missing."""
+    tw = TalkWillingnessState()
+
+    class V1(_FakeGroupView):
+        active_users = {"a": 1, "b": 1, "c": 1}
+    class V2(_FakeGroupView):
+        active_users = 9
+    class V3(_FakeGroupView):
+        pass  # no attribute
+
+    assert tw._crowd_factor(V1()) == pytest.approx(1.0 / 3 ** 0.5, abs=0.01)
+    assert tw._crowd_factor(V2()) == pytest.approx(1.0 / 9 ** 0.5, abs=0.01)
+    assert tw._crowd_factor(V3()) == 1.0
+
+
+def test_tick_applies_energy_and_crowd_factors() -> None:
+    """End-to-end: low energy + large crowd should significantly
+    suppress W accumulation compared to neutral.
+    """
+    # Neutral case: energy=1.0, 1-person "group".
+    tw_neutral = TalkWillingnessState(energy_getter=lambda: 1.0)
+    _seed_w(tw_neutral, "g", 0.0)
+    tw_neutral._states["g"].last_tick_ts = 0.0
+    W_neutral, _, _ = tw_neutral.tick(
+        "g", now=100.0, user_message_arrived=False,
+        group_view=_neutral_view(), user_turns_in_5min=0,
+    )
+
+    # Suppressed case: energy=0.0, 25-person group (factor=0.2).
+    tw_suppressed = TalkWillingnessState(energy_getter=lambda: 0.0)
+
+    class View25(_FakeGroupView):
+        active_users = {f"u{i}": 1 for i in range(25)}
+    _seed_w(tw_suppressed, "g", 0.0)
+    tw_suppressed._states["g"].last_tick_ts = 0.0
+    W_suppressed, _, _ = tw_suppressed.tick(
+        "g", now=100.0, user_message_arrived=False,
+        group_view=View25(), user_turns_in_5min=0,
+    )
+
+    # Suppressed W must be strictly less than neutral W. With factor
+    # 0.5 (energy) × 0.2 (crowd) = 0.1 vs neutral 1.0, the difference
+    # is roughly 10× in net charge, which dominates over decay.
+    assert W_suppressed < W_neutral * 0.5
