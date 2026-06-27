@@ -155,5 +155,54 @@
                 "default": true
             }
         }
+    },
+    "self_reply_settings": {
+        "description": "主动回复情绪反馈（v0.10.0+）",
+        "type": "object",
+        "hint": "bot 主动说话（不依赖用户 @/唤醒）时给情绪状态机打一个轻量 self_reply signal。仅影响群氛围（arousal/curiosity），不动 relation 维度——这样不会让 bot 对用户越来越亲和，避免 social_context 越权放大自己的主动性决策。",
+        "items": {
+            "self_reply_signal_enabled": {
+                "description": "启用 self_reply signal",
+                "hint": "关闭后，bot 主动说话也不会打 self_reply signal（但 TalkWillingness 状态机仍正常运行，配置改回开启后立即生效）。",
+                "type": "bool",
+                "default": true
+            },
+            "self_reply_signal": {
+                "description": "self_reply 使用的 signal 名",
+                "hint": "默认 self_reply（仅影响 arousal/curiosity）。如改用 friendly / praise 等会被 social_context 调制主动性的 signal，会引入反馈环——不推荐。修改前请确认该 signal 在 emotion_engine.SIGNAL_LAYER_WEIGHTS 中存在。",
+                "type": "string",
+                "default": "self_reply"
+            },
+            "self_reply_refractory_seconds": {
+                "description": "不应期（秒）",
+                "hint": "刚触发过 self_reply signal 的 scope，在该秒数内 W 会被 × 0.30 抑制（脑科学 refractory period 的简化实现）。设为 0 关闭此抑制。",
+                "type": "float",
+                "default": 30.0
+            },
+            "self_reply_threshold_low": {
+                "description": "触发区入口阈值",
+                "hint": "W 进入 (LOW, HIGH] 区间时触发 self_reply。低于 LOW 时持续蓄力。",
+                "type": "float",
+                "default": 0.55
+            },
+            "self_reply_threshold_high": {
+                "description": "反噬区入口阈值",
+                "hint": "W 高于 HIGH 时进入反噬模式：主动拽低 W（× 0.65 - 0.05），不应用 signal。防止 W 持续累积导致 affection/trust 饱和。",
+                "type": "float",
+                "default": 0.85
+            },
+            "self_reply_decay": {
+                "description": "每 tick 自然衰减系数",
+                "hint": "W 每 tick 乘以此值。0.92 表示每次衰减 8%。调低会让 W 更易蓄积，调高会让 bot 更倾向沉默。",
+                "type": "float",
+                "default": 0.92
+            },
+            "self_reply_max_consecutive": {
+                "description": "连续触发上限",
+                "hint": "scope 连续触发 self_reply 达到此次数后，下一次 tick 强制回落 W（× 0.5）且不触发。用户消息到达时此计数会重置。",
+                "type": "int",
+                "default": 5
+            }
+        }
     }
 }

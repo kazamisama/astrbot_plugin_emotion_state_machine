@@ -12,7 +12,9 @@ import json
 import math
 import re
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Callable
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
@@ -96,6 +98,300 @@ def _inject_emotion_block(system_prompt: str, block: str) -> str:
     return result.rstrip() + "\n"
 
 
+# ----------------------------------------------------------------------------
+# TalkWillingness — v0.10.0+ self-reply accumulation state machine
+# ----------------------------------------------------------------------------
+#
+# Replaces the draft "interval throttling" approach with a brain-inspired
+# accumulation model. The bot's "willingness to speak proactively" is
+# modeled as a slowly accumulated internal state W, modulated by three
+# factors (time / turn density / own emotion). W entering the trigger
+# zone (LOW..HIGH) means the bot speaks; crossing HIGH triggers a
+# reversal mode where W actively decreases (saturation protection).
+#
+# Patterns borrowed from neuroscience:
+# - Habituation: consecutive_apply counter caps repeated identical output
+# - Refractory period: post-trigger suppression window
+# - Saturation reversal: HIGH threshold inversion
+# - User interruption: consecutive counter reset on user message
+#
+# This class is *pure* (no I/O, no plugin state) so it can be tested
+# deterministically. The plugin's apply_self_reply_signal() is responsible
+# for providing inputs (scope, now, group view, turn count) and
+# interpreting the (should_apply, intensity) decision.
+#
+# v0.10.0+: kept module-level rather than inside the Star class so tests
+# can import it directly without standing up the full AstrBot runtime.
+
+
+@dataclass
+class _TalkWillingness:
+    """Per-scope internal state tracked by :class:`TalkWillingnessState`.
+
+    All fields are mutable; the owning state machine mutates them in
+    place. Reset to defaults via :meth:`TalkWillingnessState.reset`.
+    """
+
+    W: float = 0.0
+    last_tick_ts: float = 0.0
+    consecutive_apply: int = 0
+    last_apply_ts: float = 0.0
+
+
+class TalkWillingnessState:
+    """Brain-inspired self-reply accumulation state machine.
+
+    Public entry point is :meth:`tick`. Returns a ``(W_new, should_apply,
+    intensity)`` triple. ``should_apply`` is True iff W is in the trigger
+    zone AND the consecutive-apply cap hasn't been hit.
+
+    Tunables (override via ``config_getter`` at construction time):
+
+    - ``self_reply_threshold_low`` (default 0.55): trigger zone entry.
+    - ``self_reply_threshold_high`` (default 0.85): reversal zone entry.
+    - ``self_reply_decay`` (default 0.92): per-tick natural decay.
+    - ``self_reply_refractory_seconds`` (default 30.0): post-trigger
+      suppression window during which W is multiplied by 0.30.
+    - ``self_reply_max_consecutive`` (default 5): max self-reply signals
+      before consecutive-apply counter forces a fall-back.
+    """
+
+    THRESHOLD_LOW = 0.55
+    THRESHOLD_HIGH = 0.85
+    HARD_CAP = 1.20
+    REFRACTORY_SECONDS = 30.0
+    MAX_CONSECUTIVE = 5
+    DECAY = 0.92
+
+    # Time factor tuning
+    TIME_SILENCE_FLOOR = 30.0   # below this, no time charge
+    TIME_WINDOW = 600.0         # over this, charge saturates
+    TIME_CHARGE_MAX = 0.15
+
+    # Turn factor tuning
+    TURNS_HIGH_DENSITY = 3      # ≥3 turns/5min → satisfying
+    TURN_SATISFACTION = -0.10
+    TURN_AWKWARD = -0.05        # 0 turns + user present (elapsed < 60s)
+
+    # Emotion factor tuning
+    VALENCE_LOW_RED_LINE = 0.35
+    EMOTION_CHARGE_SCALE = 0.10
+    VALENCE_LOW_PENALTY = -0.08
+
+    # Intensity mapping (W in LOW..HIGH → intensity 0.05..0.25)
+    INTENSITY_MIN = 0.05
+    INTENSITY_MAX = 0.25
+
+    def __init__(
+        self,
+        config_getter: Callable[[str, Any], Any] | None = None,
+    ) -> None:
+        # config_getter lets the plugin pass in ``self._cfg_str`` /
+        # ``self._cfg_float`` so all thresholds come from
+        # _conf_schema.json. Defaults to identity (return the second arg).
+        self._cfg: Callable[[str, Any], Any] = (
+            config_getter if config_getter is not None
+            else lambda key, default: default
+        )
+        self._states: dict[str, _TalkWillingness] = {}
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def tick(
+        self,
+        scope: str,
+        now: float,
+        user_message_arrived: bool,
+        group_view: Any,
+        user_turns_in_5min: int,
+    ) -> tuple[float, bool, float]:
+        """Update the per-scope state and decide whether to apply a
+        self-reply signal.
+
+        :param scope: normalized scope key (e.g. ``"group-123:sherry"``).
+        :param now: monotonic-ish timestamp (``time.time()`` is fine).
+        :param user_message_arrived: True iff a user message landed in
+            the same tick — resets the consecutive-apply counter.
+        :param group_view: ``GroupEmotionSnapshot`` for the scope, used
+            to read arousal/curiosity/valence for the emotion factor.
+            Any object with those three float attributes works.
+        :param user_turns_in_5min: count of user turns in the last 5
+            minutes for the turn-density factor.
+        :returns: ``(W_new, should_apply_signal, intensity)``.
+
+            - ``W_new``: post-tick accumulation value, clamped to
+              ``[0, HARD_CAP]``.
+            - ``should_apply_signal``: True iff in trigger zone and
+              consecutive-apply cap not exceeded.
+            - ``intensity``: signal intensity multiplier in
+              ``[INTENSITY_MIN, INTENSITY_MAX]``; 0.0 when
+              ``should_apply_signal`` is False.
+        """
+        # Initialize timestamp on the FIRST tick for this scope only.
+        # Check the dict directly — checking ``state.last_tick_ts == 0.0``
+        # is wrong because that value can also be a legitimate "0"
+        # timestamp (e.g. when the bot starts at Unix epoch, which is
+        # uncommon in practice but not impossible). The dict presence
+        # check is unambiguous.
+        is_first_tick = scope not in self._states
+        state = self._states.setdefault(scope, _TalkWillingness())
+        if is_first_tick:
+            state.last_tick_ts = now
+
+        elapsed = max(0.0, now - state.last_tick_ts)
+
+        # Refractory: just-applied scope gets a sharp W suppression.
+        refractory = float(self._cfg(
+            "self_reply_refractory_seconds", self.REFRACTORY_SECONDS,
+        ))
+        if refractory > 0 and now - state.last_apply_ts < refractory:
+            state.W *= 0.30
+
+        # User message interrupts consecutive-apply chain.
+        if user_message_arrived:
+            state.consecutive_apply = 0
+
+        # Natural decay (always applied, even if refractory was a no-op).
+        decay = float(self._cfg("self_reply_decay", self.DECAY))
+        state.W *= decay
+
+        # Three-factor net charge.
+        net_charge = (
+            self._time_charge(elapsed, user_message_arrived)
+            + self._turn_charge(user_turns_in_5min, elapsed)
+            + self._emotion_charge(group_view)
+        )
+        state.W += net_charge
+
+        # Threshold decision — also mutates state.consecutive_apply
+        # and state.last_apply_ts when triggering.
+        should_apply, intensity = self._threshold_decision(state, now)
+
+        # Clamp and advance clock.
+        state.W = max(0.0, min(self.HARD_CAP, state.W))
+        state.last_tick_ts = now
+
+        return state.W, should_apply, intensity
+
+    def on_scope_deleted(self, scope: str) -> None:
+        """Drop the per-scope state when the underlying ESM scope is
+        removed. Prevents the dict from growing unbounded across the
+        plugin's lifetime.
+        """
+        self._states.pop(scope, None)
+
+    def reset(self, scope: str) -> None:
+        """Force-clear a scope's state. Currently identical to
+        :meth:`on_scope_deleted`; kept as a separate name for API
+        symmetry with ``reset_scope()`` on the engine.
+        """
+        self.on_scope_deleted(scope)
+
+    def __len__(self) -> int:
+        """Number of scopes currently tracked. Useful for tests and
+        for diagnostic logging.
+        """
+        return len(self._states)
+
+    # ------------------------------------------------------------------
+    # Charge factors (private)
+    # ------------------------------------------------------------------
+
+    def _time_charge(self, elapsed: float, user_msg: bool) -> float:
+        """寂寞蓄力: longer silence → stronger charge, capped.
+
+        - < 30s silence OR user just spoke: 0
+        - 30s..10min: linearly scales from 0 to TIME_CHARGE_MAX
+        - > 10min: clamped to TIME_CHARGE_MAX
+        """
+        if user_msg or elapsed < self.TIME_SILENCE_FLOOR:
+            return 0.0
+        headroom = elapsed - self.TIME_SILENCE_FLOOR
+        return min(
+            self.TIME_CHARGE_MAX,
+            headroom / self.TIME_WINDOW * self.TIME_CHARGE_MAX,
+        )
+
+    def _turn_charge(self, turns_recent: int, elapsed: float) -> float:
+        """满足感: dense recent conversation → negative charge."""
+        if turns_recent >= self.TURNS_HIGH_DENSITY:
+            return self.TURN_SATISFACTION
+        # 0 turns AND user is "present" (elapsed < 60s) is awkward;
+        # mild negative charge to suppress premature self-reply.
+        if turns_recent == 0 and elapsed < 60.0:
+            return self.TURN_AWKWARD
+        return 0.0
+
+    def _emotion_charge(self, view: Any) -> float:
+        """Self emotion modulation. Reads arousal/curiosity/valence from
+        the group snapshot.
+
+        Critical: this method MUST NOT touch affection/trust or any
+        relation-layer dimension. Reading those would re-introduce the
+        very feedback loop the self_reply signal was designed to break.
+        """
+        valence = float(getattr(view, "valence", 0.5))
+        if valence < self.VALENCE_LOW_RED_LINE:
+            return self.VALENCE_LOW_PENALTY
+        arousal = float(getattr(view, "arousal", 0.5))
+        curiosity = float(getattr(view, "curiosity", 0.5))
+        scale = self.EMOTION_CHARGE_SCALE
+        return (arousal - 0.5) * scale + (curiosity - 0.5) * scale
+
+    # ------------------------------------------------------------------
+    # Threshold logic (private)
+    # ------------------------------------------------------------------
+
+    def _threshold_decision(
+        self, state: _TalkWillingness, now: float,
+    ) -> tuple[bool, float]:
+        """Decide whether to fire this tick. Also mutates consecutive
+        counter and last_apply_ts when firing (so the next refractory
+        check sees the updated timestamp).
+        """
+        low = float(self._cfg("self_reply_threshold_low", self.THRESHOLD_LOW))
+        high = float(self._cfg("self_reply_threshold_high", self.THRESHOLD_HIGH))
+        max_consecutive = int(self._cfg(
+            "self_reply_max_consecutive", self.MAX_CONSECUTIVE,
+        ))
+        # Sanity: LOW must be < HIGH; if config breaks the invariant,
+        # fall back to defaults rather than raise.
+        if not (0.0 < low < high):
+            low, high = self.THRESHOLD_LOW, self.THRESHOLD_HIGH
+
+        W = state.W
+
+        if W > high:
+            # Reversal zone: actively pull W down, do NOT apply.
+            state.W = W * 0.65 - 0.05
+            return False, 0.0
+
+        if W > low:
+            # Trigger zone: check consecutive-apply cap.
+            if state.consecutive_apply >= max_consecutive:
+                # Cap hit — force a fall-back so W can drain.
+                state.W = W * 0.5
+                return False, 0.0
+            intensity = self._intensity_from_W(W, low, high)
+            state.consecutive_apply += 1
+            state.last_apply_ts = now
+            state.W = W * 0.45  # trigger reset
+            return True, intensity
+
+        # Accumulation zone.
+        return False, 0.0
+
+    def _intensity_from_W(self, W: float, low: float, high: float) -> float:
+        """Linearly map W in [low, high] to intensity in [MIN, MAX]."""
+        if high <= low:
+            return self.INTENSITY_MIN
+        ratio = (W - low) / (high - low)
+        ratio = max(0.0, min(1.0, ratio))
+        return self.INTENSITY_MIN + ratio * (self.INTENSITY_MAX - self.INTENSITY_MIN)
+
+
 class EmotionStateMachineStar(Star):
     """Simulate bot emotion state per conversation scope.
 
@@ -118,6 +414,19 @@ class EmotionStateMachineStar(Star):
             appraisal_mode=self._cfg_str("appraisal_mode", "direct"),
         )
         self._last_save_time = 0.0
+        # v0.10.0+: self-reply accumulation state machine (pure math;
+        # config-driven via the cfg helper passed in). Module-level
+        # class lives just above the Star class definition.
+        self._talk_willingness = TalkWillingnessState(
+            config_getter=self.config.get,
+        )
+        # Per-scope user-message timestamp tracking — feeds the time
+        # factor ("how long since user spoke?") and the turn-density
+        # factor in TalkWillingnessState.tick(). Both dicts grow
+        # with scope count but stay bounded by group_ttl pruning
+        # (handled in on_scope_deleted).
+        self._last_user_msg_ts: dict[str, float] = {}
+        self._user_turn_ts: dict[str, list[float]] = {}
         # Register Dashboard routes FIRST so they remain available even
         # if _load_state() raises (e.g. corrupt JSON). The handlers
         # reference self.machine which is created above.
@@ -513,6 +822,20 @@ class EmotionStateMachineStar(Star):
             disabled_signals=disabled if disabled else None,
             update_relation=apply_to_relation,
         )
+        # v0.10.0+: feed the user-message timestamp trackers used by
+        # TalkWillingnessState's time + turn-density factors. Stored
+        # separately from emotion state so they survive emotion_engine
+        # scope resets / migrations.
+        now = time.time()
+        self._last_user_msg_ts[scope] = now
+        # Sliding-window turn log: keep last 5 minutes only. Sorted
+        # insert is fine at this scale (≤ ~30 turns / 5min typical).
+        cutoff = now - 300.0
+        buf = self._user_turn_ts.setdefault(scope, [])
+        buf.append(now)
+        # Prune in-place; cheap because the list is tiny.
+        while buf and buf[0] < cutoff:
+            buf.pop(0)
         logger.debug(
             "[emotion_state_machine] observed message | "
             f"scope={scope} user={user_id} group_label={view.group.label} combined_label={view.label}"
@@ -925,6 +1248,11 @@ class EmotionStateMachineStar(Star):
         built-in /emotion_reset command). Persists state.
         """
         snap = self.machine.reset(normalize_scope(scope))
+        # v0.10.0+: also drop the per-scope TalkWillingness accumulator
+        # and user-message trackers — they no longer have a backing
+        # emotion state to drive, and leaving them around would silently
+        # re-create scope entries on the next apply_self_reply_signal.
+        self._cleanup_self_reply_tracking(normalize_scope(scope))
         self._save_state(force=True)
         return snap
 
@@ -1015,6 +1343,133 @@ class EmotionStateMachineStar(Star):
         )
         return TextPart(text=block, type="text").mark_as_temp()
 
+    # ------------------------------------------------------------------
+    # Self-reply signal API (v0.10.0+)
+    # ------------------------------------------------------------------
+
+    async def apply_self_reply_signal(self, event: AstrMessageEvent) -> bool:
+        """Called by ``social_context`` (or any other plugin that decides
+        the bot should reply proactively) immediately after the bot
+        decides to speak. Consults :class:`TalkWillingnessState` to
+        decide whether to actually apply a ``self_reply`` signal to
+        the bot's emotion state, and applies it if so.
+
+        :returns: True iff a self-reply signal was actually applied.
+            Returns False (silently) for any of:
+
+            - ``self_reply_signal_enabled`` is False
+            - the event was triggered by a user @-wake (not proactive)
+            - TalkWillingnessState decided "no" (outside trigger zone,
+              in reversal zone, or consecutive-apply cap hit)
+            - the configured signal is in ``disabled_signals``
+            - ``try_apply_signal`` raised (caught and logged at debug)
+
+        No exception ever escapes — failures here must not break
+        ``social_context``'s reply flow.
+        """
+        if not self._cfg_bool("self_reply_signal_enabled", True):
+            return False
+        # Defense-in-depth: if the caller invokes this for a user-@
+        # triggered reply, ignore. Real path is proactive (judge=yes
+        # without user @).
+        if getattr(event, "is_at_or_wake_command", False):
+            return False
+
+        try:
+            scope = await self._scope_id(event)
+        except Exception as exc:
+            logger.debug(
+                f"[emotion_state_machine] apply_self_reply_signal: "
+                f"_scope_id failed: {exc!r}"
+            )
+            return False
+        user_id = str(event.get_sender_id() or "")
+        now = time.time()
+
+        # Compute inputs for TalkWillingnessState.tick().
+        last_user = self._last_user_msg_ts.get(scope, 0.0)
+        # "User spoke in the same tick" means we just observed them
+        # observe_message hook ran before this call — i.e. the user
+        # message that prompted social_context's judge to fire.
+        user_msg_arrived = last_user > 0 and (now - last_user) < 5.0
+        # Count user turns in the trailing 5-min window.
+        buf = self._user_turn_ts.get(scope, [])
+        cutoff = now - 300.0
+        user_turns_recent = sum(1 for ts in buf if ts >= cutoff)
+
+        # Read the group snapshot for emotion factor. Decay first so
+        # the values fed to TalkWillingness are the same the user
+        # would see in /emotion_state.
+        try:
+            self.machine.decay_group(scope)
+            group_view = self.machine.groups.get(scope)
+        except Exception:
+            group_view = None
+        if group_view is None:
+            # Scope was pruned between observe_message and this call.
+            return False
+
+        try:
+            _, should_apply, intensity = self._talk_willingness.tick(
+                scope=scope,
+                now=now,
+                user_message_arrived=user_msg_arrived,
+                group_view=group_view,
+                user_turns_in_5min=user_turns_recent,
+            )
+        except Exception as exc:
+            logger.debug(
+                f"[emotion_state_machine] TalkWillingness.tick failed: "
+                f"{exc!r}"
+            )
+            return False
+
+        if not should_apply:
+            return False
+
+        signal = self._cfg_str("self_reply_signal", "self_reply")
+        # Skip if the configured signal is in the disabled list — same
+        # defense apply_signal would have, but checked upfront so we
+        # don't charge consecutive_apply for nothing.
+        if signal.lower() in self._get_disabled_signals():
+            return False
+
+        try:
+            self.try_apply_signal(
+                scope=scope, user_id=user_id,
+                signal=signal, intensity=intensity,
+                reason="esm_self_reply",
+            )
+        except Exception as exc:
+            logger.debug(
+                f"[emotion_state_machine] try_apply_signal(self_reply) "
+                f"failed: {exc!r}"
+            )
+            return False
+        return True
+
+    def _cleanup_self_reply_tracking(self, scope: str) -> None:
+        """Drop per-scope trackers when an ESM scope is deleted.
+
+        Called from the public ``reset_scope`` (and the POST
+        ``/<plugin>/delete/<scope>`` HTTP handler). Bounded cleanup —
+        both dicts grow only with active scopes, so on_scope_deleted
+        keeps them in sync with the emotion state machine's group map.
+
+        Defensive against test fixtures built via ``__new__`` that
+        bypass ``__init__``: skips tracking cleanup if the attributes
+        don't exist yet.
+        """
+        tw = getattr(self, "_talk_willingness", None)
+        if tw is not None:
+            tw.on_scope_deleted(scope)
+        tracker = getattr(self, "_last_user_msg_ts", None)
+        if tracker is not None:
+            tracker.pop(scope, None)
+        turn_log = getattr(self, "_user_turn_ts", None)
+        if turn_log is not None:
+            turn_log.pop(scope, None)
+
     def render_state_text(self, scope: str, user_id: str = "") -> str:
         """Human-readable rendering of the current state, identical to the
         /emotion_state command output. Useful for plugin debug/log lines."""
@@ -1088,7 +1543,12 @@ class EmotionStateMachineStar(Star):
             return {"error": "scope not found", "scope": scope}
 
         async def scope_delete(scope: str):
-            """v0.9.29: remove an entire scope and its relations."""
+            """v0.9.29: remove an entire scope and its relations.
+            v0.10.0+: also drops the per-scope TalkWillingness
+            accumulator and user-message trackers so they don't
+            silently re-create entries on the next
+            apply_self_reply_signal call.
+            """
             normalized = normalize_scope(scope)
             deleted = False
             if normalized in self.machine.groups:
@@ -1097,6 +1557,11 @@ class EmotionStateMachineStar(Star):
             if normalized in self.machine.relations:
                 del self.machine.relations[normalized]
                 deleted = True
+            # Always run cleanup — even when the scope wasn't found in
+            # the engine, stale tracker entries may exist (e.g. user
+            # observed a message but the engine never persisted the
+            # scope). Defensive cleanup keeps the dicts bounded.
+            self._cleanup_self_reply_tracking(normalized)
             if deleted:
                 self._save_state(force=True)
                 return {"deleted": scope}
