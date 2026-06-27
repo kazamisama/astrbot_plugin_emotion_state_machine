@@ -4,6 +4,25 @@ AstrBot Emotion State Machine
 A lightweight plugin that simulates the bot's emotional state as a decaying
 state machine.  It can observe conversation signals, expose debug commands, and
 inject a compact emotion block before LLM requests.
+
+Public API for other plugins
+============================
+
+The complete public API contract is documented in ``_PUBLIC_API.md`` at the
+plugin root. Methods NOT listed there are implementation details and may change
+without notice. Highlights (v0.10.0+):
+
+- Reading state:    ``get_combined_state``, ``get_group_state``,
+                    ``get_relation_state``, ``render_state_text``
+- Building blocks:  ``build_prompt_block``, ``to_text_part``
+- Writing state:    ``observe_text``, ``apply_signal``, ``try_apply_signal``,
+                    ``apply_self_reply_signal``, ``reset_scope``
+- Meta:             ``list_signals``, ``is_signal_enabled``,
+                    ``list_disabled_signals``, ``get_scope``
+
+To obtain an instance from another plugin::
+
+    esm = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
 """
 
 from __future__ import annotations
