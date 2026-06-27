@@ -72,8 +72,8 @@
 
 ## 4. 文档与兼容性
 
-- [ ] 更新 `CHANGELOG.md`：v0.10.0 段落
-- [ ] 更新 `README.md`：公开 API 列表指 `_PUBLIC_API.md`
+- [x] 更新 `CHANGELOG.md`：v0.10.0 段落
+- [x] 更新 `README.md`：公开 API 列表指 `_PUBLIC_API.md`
 - [ ] 兼容性矩阵在文档里已写，**漏一行**：
   - 新 social_context v0.8.12 + 没装 ESM → emotion 注入全部 no-op
   - 在 social_context README 加"ESM v0.10.0+ 强依赖"声明

@@ -2,6 +2,84 @@
 
 ## Unreleased
 
+## v0.10.0 - 2026-06-27
+
+### Added
+
+- **`to_text_part(self, scope, user_id="") -> TextPart`**（`main.py`）。
+  `build_prompt_block` 的 TextPart 版本，`.mark_as_temp()` 已链。
+  供 social_context 等插件直接 `append` 到
+  `request.extra_user_content_parts`，避免字符串拼接把多个插件的
+  内容块合并到同一个 TextPart。返回内容与 `build_prompt_block`
+  字节级一致（含 `emotion_block_template` 配置生效）。
+
+- **`apply_self_reply_signal(self, event) -> bool`**（`main.py`）。
+  供 social_context（或任何"主动回复决策者"）在 judge=yes 之后
+  调用的公共 async 方法。内部委托给
+  :class:`TalkWillingnessState` 决定是否真的打 self_reply signal。
+  失败永不抛出——只 `return False`。
+
+- **`TalkWillingnessState` 类**（`main.py` 模块级，pure 逻辑）。
+  脑科学启发的"说话欲望"累积状态机：
+  - 三因素调制：时间（寂寞蓄力）/ 轮次密度（满足感）/ 自身情绪
+  - 阈值反噬：越过 HIGH 后主动衰减，不打 signal（防 affection 饱和）
+  - 不应期：刚触发后短时间内抑制
+  - 连续上限：MAX_CONSECUTIVE 连续触发后强制回落
+  - 用户打断：consecutive_apply 计数重置
+  - scope 删除：清理内部 state
+  无 I/O、无 plugin 状态依赖，可独立 import 测试。
+
+- **`self_reply` signal**（`emotion_engine/defaults.py` 四张表）：
+  群维度 `arousal +0.05, curiosity +0.02`；关系维度为空；
+  SIGNAL_LAYER_WEIGHTS `(1.0, 0.0)`（全部走群层）。
+  故意不动 affection/trust——切断 social_context 调制主动性的反馈环。
+
+- **`_PUBLIC_API.md`**：完整的跨插件 API 契约文档，含稳定性
+  分级（Stable / New Stable / Experimental / Deprecated）、
+  版本兼容矩阵（social_context ↔ ESM 升级组合表）。
+
+### Changed
+
+- **`build_prompt_block` 对齐 `on_llm_request`**：之前绕过
+  `emotion_block_template` 配置，v0.10.0 起两个入口读同一份
+  template，输出字节级一致。
+
+- **`observe_message` 增强**：跟踪每个 scope 的最近用户消息时间戳
+  (`_last_user_msg_ts`) 与 5 分钟滑动窗口内的用户轮次
+  (`_user_turn_ts`)。这是 TalkWillingnessState 的输入源。
+
+- **`reset_scope` 与 HTTP `POST /<plugin>/delete/<scope>`**：
+  删 scope 时同步清理 TalkWillingness 内部状态 + 用户消息时间戳
+  字典，防止 dict 无界增长。
+
+### Configuration
+
+新增 `self_reply_settings` section（`_conf_schema.json`），含 7 项：
+
+| Key | 默认值 | 说明 |
+|---|---|---|
+| `self_reply_signal_enabled` | `true` | 总开关 |
+| `self_reply_signal` | `"self_reply"` | 使用的 signal 名 |
+| `self_reply_refractory_seconds` | `30.0` | 不应期秒数（0 = 关闭） |
+| `self_reply_threshold_low` | `0.55` | 触发区入口 |
+| `self_reply_threshold_high` | `0.85` | 反噬区入口 |
+| `self_reply_decay` | `0.92` | 每 tick 自然衰减系数 |
+| `self_reply_max_consecutive` | `5` | 连续触发上限 |
+
+### Internal
+
+- `main.py` 模块顶部加 docstring 指向 `_PUBLIC_API.md`，按用途
+  分组列出 API 方法名。
+- `_cleanup_self_reply_tracking` 用 `getattr` 防御 `__new__` 风格的
+  测试 fixture。
+
+### Cross-plugin notes
+
+- social_context v0.8.12+ 应该在 judge=yes 后调
+  `esm.apply_self_reply_signal(event)`，并用 `esm.to_text_part()`
+  替换之前的字符串拼接注入。
+- 完整迁移说明见 `_PUBLIC_API.md` 的"版本兼容矩阵"section。
+
 ## v0.9.59 - 2026-06-27
 
 ### Fixed

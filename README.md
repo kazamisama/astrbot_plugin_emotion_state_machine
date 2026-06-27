@@ -135,6 +135,10 @@ plugin.set_appraisal_mode("occ_static")
 - 接入 aiocqhttp 戳一戳 notice，将真实戳一戳映射到 `poke` 信号。
 - 支持 LLM judge 对复杂消息做结构化 signal 判定。
 - 增加跨群 user-global 长期关系层。
+- **v0.10.0+ 已完成**：self_reply 累积模型（`TalkWillingnessState`），
+  对应第三条 "增加跨群长期关系层" 之外的"bot 自我反馈"路径。
+  完整 API 与配置见 [`_PUBLIC_API.md`](./_PUBLIC_API.md) 与
+  `_conf_schema.json` 的 `self_reply_settings` section。
 
 ## 模块结构
 
@@ -158,6 +162,8 @@ emotion_engine/
 
 ## Public API for other plugins
 
+> v0.10.0+：完整 API 契约见 [`_PUBLIC_API.md`](./_PUBLIC_API.md)。本节保留概览，详细行为/兼容性/版本矩阵请查那份文档。
+
 其他 AstrBot 插件可以通过 `context.get_registered_star("astrbot_plugin_emotion_state_machine")` 获取本插件实例，并调用下面的方法读写情绪状态。**所有方法都会对 `scope` / `user_id` 做内部归一化**，外部不需要预先 trim。
 
 ### 关键约定
@@ -174,9 +180,10 @@ emotion_engine/
 | `get_combined_state(scope, user_id="", *, apply_decay=True)` | 合成视图（group + relation + label）。 |
 | `get_group_state(scope, *, apply_decay=True)` | 仅群公共情绪快照。 |
 | `get_relation_state(scope, user_id, *, apply_decay=True)` | 仅用户私有关系快照。 |
-| `list_signals()` | 返回支持的 signal 名称列表。 |
+| `list_signals()` | 返回支持的 signal 名称列表（含 v0.10.0+ 的 `self_reply`）。 |
 | `render_state_text(scope, user_id="")` | 与 `/emotion_state` 一致的人类可读文本。 |
-| `build_prompt_block(scope, user_id="")` | 与内置 LLM 注入一致的 prompt block。 |
+| `build_prompt_block(scope, user_id="")` | 与内置 LLM 注入一致的 prompt block（v0.10.0+ 起读 `emotion_block_template` 配置）。 |
+| `to_text_part(scope, user_id="")` | **v0.10.0+** 同上的 `TextPart` 版本。供其他插件直接 append 到 `extra_user_content_parts`，避免字符串拼接。 |
 
 ### 写入状态
 
@@ -184,8 +191,17 @@ emotion_engine/
 | --- | --- |
 | `observe_text(scope, text, *, user_id="", mentioned=False)` | 从原始文本推断信号并应用。 |
 | `apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external")` | 手动施加一个已知 signal。未知 signal 抛 `ValueError`。 |
-| `reset_scope(scope)` | 重置整个 scope（group + 所有 relations，行为同 `/emotion_reset`）。 |
+| `try_apply_signal(...)` | `apply_signal` 的容错版本，失败返回 `None`。 |
+| `apply_self_reply_signal(event)` | **v0.10.0+** 由"主动回复决策者"（如 social_context judge=yes 后）调用。内部走 TalkWillingness 累积模型。失败永不抛出。 |
+| `reset_scope(scope)` | 重置整个 scope（group + 所有 relations + TalkWillingness 状态）。 |
 | `force_decay(scope, *, now=None)` | 立即对群公共情绪执行一次衰减，可选传 `now` 推进时钟。 |
+| `set_appraisal_mode(mode)` | 切换 appraisal 模式（`direct` / `occ_static` / `occ_heuristic`）。 |
+
+### 模块级
+
+| 名称 | 用途 |
+| --- | --- |
+| `TalkWillingnessState` | **v0.10.0+** Pure 逻辑累积状态机。可独立 import 不需要 plugin 实例。 |
 
 ### 使用示例
 
@@ -207,4 +223,12 @@ machine.apply_signal(
 # 读取
 view = machine.get_combined_state(scope="group-123", user_id="user-a")
 print(view.label, view.group.valence, view.relation.trust)
+
+# v0.10.0+：构建 TextPart 注入到自己的 LLM 请求
+from astrbot.core.agent.message import TextPart
+extra_parts.append(machine.to_text_part(scope, user_id))
+
+# v0.10.0+：bot 主动回复后让 ESM 自我反馈
+# (social_context 在 judge=yes 后调用)
+await machine.apply_self_reply_signal(event)
 ```
