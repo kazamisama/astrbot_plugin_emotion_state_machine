@@ -977,6 +977,34 @@ class EmotionStateMachineStar(Star):
         view = self.get_combined_state(scope, user_id)
         return build_prompt_block(normalize_scope(scope), view)
 
+    def to_text_part(self, scope: str, user_id: str = "") -> TextPart:
+        """Return the emotion block as a ``TextPart`` ready for direct
+        injection into ``request.extra_user_content_parts``.
+
+        v0.10.0+ — counterpart to :meth:`build_prompt_block` that returns
+        a ``TextPart`` instead of a raw string. Other plugins (e.g.
+        ``social_context`` judge channel) should prefer this over string
+        concatenation so the emotion block arrives as an independent
+        ``TextPart`` rather than getting spliced into another plugin's
+        ``TextPart`` body.
+
+        Honors the ``emotion_block_template`` config the same way the
+        built-in ``on_llm_request`` does. The returned ``TextPart`` is
+        ``mark_as_temp()`` so it is sent to the LLM but not persisted
+        to conversation history — mirrors the v0.9.59 fix for the
+        built-in injector.
+
+        Example::
+
+            extra_parts.append(plugin.to_text_part(scope, user_id))
+        """
+        view = self.get_combined_state(scope, user_id)
+        template = self._cfg_str("emotion_block_template", "") or None
+        block = build_prompt_block(
+            normalize_scope(scope), view, template=template,
+        )
+        return TextPart(text=block, type="text").mark_as_temp()
+
     def render_state_text(self, scope: str, user_id: str = "") -> str:
         """Human-readable rendering of the current state, identical to the
         /emotion_state command output. Useful for plugin debug/log lines."""

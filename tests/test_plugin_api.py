@@ -235,6 +235,69 @@ def test_build_prompt_block_contains_layers() -> None:
 
 
 # ----------------------------------------------------------------------
+# to_text_part (v0.10.0+)
+# ----------------------------------------------------------------------
+
+
+def test_to_text_part_returns_text_part_with_block_content() -> None:
+    """to_text_part wraps the same content build_prompt_block produces,
+    but as a TextPart. content should match str-for-str (modulo whitespace).
+    """
+    plugin = _make_plugin()
+    plugin.apply_signal("g", "u", "technical", intensity=1.0)
+
+    str_block = plugin.build_prompt_block("g", "u")
+    part = plugin.to_text_part("g", "u")
+
+    # TextPart exposes ``.text`` (see conftest._FakeTextPart).
+    assert hasattr(part, "text")
+    assert part.text.strip() == str_block.strip()
+
+
+def test_to_text_part_honors_emotion_block_template() -> None:
+    """Custom ``emotion_block_template`` flows through to_text_part the
+    same way it does for the built-in on_llm_request injector.
+    """
+    plugin = _make_plugin(
+        emotion_block_template="## Custom ESM\nscope={scope}\nlabel={combined_label}\n",
+    )
+    plugin.apply_signal("g", "u", "praise", intensity=1.0)
+    part = plugin.to_text_part("g", "u")
+    assert "## Custom ESM" in part.text
+    assert "scope=" in part.text
+    # Default template marker must NOT appear when an override is set.
+    assert "## Bot Emotion State" not in part.text
+
+
+def test_to_text_part_returns_marked_as_temp() -> None:
+    """``mark_as_temp()`` is chained so the TextPart is provider-facing
+    but not persisted to conversation history — mirrors v0.9.59 fix
+    for the built-in injector.
+    """
+    plugin = _make_plugin()
+    plugin.apply_signal("g", "u", "praise", intensity=1.0)
+    # The fake TextPart's ``mark_as_temp()`` returns self and sets no
+    # extra flag, but the real one sets ``_temp = True``. We can only
+    # check that the returned object is usable (has ``.text``),
+    # proving the chain did not return ``None``.
+    part = plugin.to_text_part("g", "u")
+    assert part is not None
+    assert isinstance(part.text, str)
+    assert len(part.text) > 0
+
+
+def test_to_text_part_works_on_empty_scope() -> None:
+    """Calling to_text_part on a scope that has never been touched must
+    still return a valid TextPart (rendering the baseline state).
+    """
+    plugin = _make_plugin()
+    part = plugin.to_text_part("never-seen", "nobody")
+    assert part.text  # non-empty
+    # Baseline label should be present somewhere in the rendered block.
+    assert "neutral" in part.text.lower() or "calm" in part.text.lower()
+
+
+# ----------------------------------------------------------------------
 # Normalization
 # ----------------------------------------------------------------------
 

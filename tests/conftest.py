@@ -52,6 +52,30 @@ class _FakeStar:
         self.context = context
 
 
+class _FakeTextPart:
+    """Minimal stand-in for ``astrbot.core.agent.message.TextPart``.
+
+    Stores ``text`` / ``type`` as plain attributes so tests can assert
+    on them without instantiating the real class. ``mark_as_temp()``
+    returns ``self`` so chaining works exactly like the real one.
+
+    The real ``TextPart`` is unavailable in this test environment
+    because ``astrbot.core.agent.message`` is not part of the
+    AstrBot public package surface that conftest fakes; without this
+    shim, ``import main`` raises ``ModuleNotFoundError`` at collection
+    time.
+    """
+
+    def __init__(self, text: str = "", type: str = "text") -> None:
+        self.text = text
+        self.type = type
+
+    def mark_as_temp(self) -> "_FakeTextPart":
+        # Mirror the real method's contract: return self so callers can
+        # chain ``.mark_as_temp()`` directly.
+        return self
+
+
 def _install_fake_astrbot() -> None:
     if "astrbot" in sys.modules and getattr(
         sys.modules["astrbot"], "_is_fake", False
@@ -77,6 +101,13 @@ def _install_fake_astrbot() -> None:
     config_mod = types.ModuleType("astrbot.core.config.astrbot_config")
     config_mod.AstrBotConfig = object
 
+    # v0.10.0+: fake TextPart so plugin methods that build TextPart
+    # objects (e.g. ``to_text_part``) can be tested in isolation.
+    agent_pkg = types.ModuleType("astrbot.core.agent")
+    agent_pkg.__path__ = []  # mark as package so submodule import works
+    msg_mod = types.ModuleType("astrbot.core.agent.message")
+    msg_mod.TextPart = _FakeTextPart
+
     astrbot.api = api
     sys.modules["astrbot"] = astrbot
     sys.modules["astrbot.api"] = api
@@ -85,6 +116,8 @@ def _install_fake_astrbot() -> None:
     sys.modules["astrbot.core"] = config_pkg
     sys.modules["astrbot.core.config"] = config_sub
     sys.modules["astrbot.core.config.astrbot_config"] = config_mod
+    sys.modules["astrbot.core.agent"] = agent_pkg
+    sys.modules["astrbot.core.agent.message"] = msg_mod
 
 
 _install_fake_astrbot()
