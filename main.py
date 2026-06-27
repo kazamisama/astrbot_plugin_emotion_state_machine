@@ -554,8 +554,15 @@ class EmotionStateMachineStar(Star):
         # dynamic block lands inside the user message rather than the
         # system prompt, keeping the LLM prefix cache intact.
         if hasattr(request, "extra_user_content_parts"):
+            # v0.9.59: mark_as_temp() so the block is provider-facing
+            # only (LLM sees it) but NOT persisted to conversation
+            # history. Without this, the block would leak into the
+            # next message's user prompt, polluting history and
+            # causing the bot to "see" its own emotion state from
+            # past turns. Mirrors livingmemory's extra_user_content
+            # injection pattern (memory_recall.py:286).
             request.extra_user_content_parts.append(
-                TextPart(text=block, type="text")
+                TextPart(text=block, type="text").mark_as_temp()
             )
         elif hasattr(request, "system_prompt"):
             # Fallback for older AstrBot versions that don't expose

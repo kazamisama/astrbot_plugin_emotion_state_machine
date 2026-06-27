@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.9.59 - 2026-06-27
+
+### Fixed
+
+- **情绪块不再持久化到对话历史**（`main.py:on_llm_request`）。
+  v0.9.46 迁移到 `extra_user_content_parts.append(TextPart(...))` 时
+  漏了 `.mark_as_temp()`，导致情绪块被 AstrBot 持久化到 conversation
+  history——下次对话时 user 消息后面会带着上一轮的
+  `<!-- esm:emotion-block:... -->`，污染 history。
+  修复：append 后链上 `.mark_as_temp()`，与 livingmemory 的
+  `memory_recall.py:286` 同样模式。`_no_save=True` 让 AstrBot 的
+  internal pipeline 跳过 db 持久化，但 provider 仍把 block 发送给 LLM。
+
 ## v0.9.58 - 2026-06-26
 
 ### Fixed
