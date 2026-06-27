@@ -74,13 +74,20 @@
 
 - [x] 更新 `CHANGELOG.md`：v0.10.0 段落
 - [x] 更新 `README.md`：公开 API 列表指 `_PUBLIC_API.md`
-- [ ] 兼容性矩阵在文档里已写，**漏一行**：
-  - 新 social_context v0.8.12 + 没装 ESM → emotion 注入全部 no-op
-  - 在 social_context README 加"ESM v0.10.0+ 强依赖"声明
 - [x] engram 脑科学参考素材收集（用户当日目标）
   - 来源：脑科学 / 神经科学公开资料
   - 用途：v0.10.0 之后阶段（v0.11+）的情绪模型参考
   - 已完成：见 `docs/neuroscience_references.md`（v0.10.0 现状映射 4 条 + v0.11+ 候选 5 条）
+
+## 5. 移交给 social_context 仓库的工作（不再追踪）
+
+详见 `astrbot_plugin_social_context/todo.md`：
+
+- §1 social_context v0.8.12 迁移（删 self-reply 代码、调 `to_text_part` / `apply_self_reply_signal`、删 4 配置项、bump 版本）
+- §2 social_context README "ESM v0.10.0+ 强依赖"声明
+- §3 推迟的 emotion_bridge.py 彻底清理
+
+ESM 这边不再追踪 social_context 仓库的工作项，避免跨仓库 todo 重复维护。
 
 ## 5. 已知的非本版本工作（标记归档）
 
