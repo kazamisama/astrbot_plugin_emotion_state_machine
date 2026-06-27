@@ -973,9 +973,19 @@ class EmotionStateMachineStar(Star):
         to embed an identical block without going through the standard
         on_llm_request hook (e.g. when injecting into a judge model instead
         of the main reply model).
+
+        v0.10.0+: honors the ``emotion_block_template`` config the same
+        way the built-in ``on_llm_request`` injector does. Previously
+        this method silently bypassed the template override — calling
+        code that wanted custom rendering had to reach into
+        :meth:`to_text_part` or duplicate the template lookup. With this
+        fix, both entry points produce byte-identical output.
         """
         view = self.get_combined_state(scope, user_id)
-        return build_prompt_block(normalize_scope(scope), view)
+        template = self._cfg_str("emotion_block_template", "") or None
+        return build_prompt_block(
+            normalize_scope(scope), view, template=template,
+        )
 
     def to_text_part(self, scope: str, user_id: str = "") -> TextPart:
         """Return the emotion block as a ``TextPart`` ready for direct

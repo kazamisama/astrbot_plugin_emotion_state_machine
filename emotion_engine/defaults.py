@@ -42,6 +42,11 @@ GROUP_SIGNAL_WEIGHTS: dict[str, dict[str, float]] = {
     "comfort": {"valence": 0.04, "stress": -0.08},
     "insult": {"valence": -0.13, "stress": 0.11, "arousal": 0.06},
     "pressure": {"stress": 0.10, "arousal": 0.05, "valence": -0.05},
+    # v0.10.0+: bot's own proactive reply — small arousal/curiosity bump
+    # on the group atmosphere ONLY, no relation change. Designed to break
+    # the social_context ↔ ESM feedback loop: self-reply must not raise
+    # affection/trust (those gate social_context's proactivity decision).
+    "self_reply": {"arousal": 0.05, "curiosity": 0.02},
     "silence": {"arousal": -0.04, "curiosity": -0.03},
     "success": {"valence": 0.09, "arousal": 0.04, "stress": -0.05},
     "failure": {"valence": -0.08, "stress": 0.08, "curiosity": 0.04},
@@ -58,6 +63,8 @@ RELATION_SIGNAL_WEIGHTS: dict[str, dict[str, float]] = {
     "comfort": {"trust": 0.06, "affection": 0.07, "irritation": -0.06, "familiarity": 0.02},
     "insult": {"trust": -0.07, "affection": -0.04, "irritation": 0.12, "familiarity": 0.01},
     "pressure": {"trust": -0.04, "irritation": 0.08, "familiarity": 0.01},
+    # v0.10.0+: empty by design. See GROUP_SIGNAL_WEIGHTS comment.
+    "self_reply": {},
     "silence": {},
     "success": {"trust": 0.03, "affection": 0.02, "irritation": -0.02},
     "failure": {"trust": -0.02, "irritation": 0.03},
@@ -74,6 +81,10 @@ SIGNAL_LAYER_WEIGHTS: dict[str, tuple[float, float]] = {
     "comfort": (0.35, 0.85),
     "insult": (0.45, 0.90),
     "pressure": (0.55, 0.65),
+    # v0.10.0+: full weight goes to group, zero to relation — empty
+    # relation weights above are not just "no effect" but "no participation"
+    # in the relation layer at all. Mirrors ``silence``'s split.
+    "self_reply": (1.00, 0.00),
     "silence": (0.50, 0.00),
     "success": (0.55, 0.45),
     "failure": (0.55, 0.45),
@@ -122,6 +133,14 @@ SIGNAL_APPRAISAL_PROFILES: dict[str, dict[str, float]] = {
     "comfort":   {"praiseworthiness": 0.70, "desirability": 0.50, "goal_conduciveness": 0.50, "arousal": 0.20},
     "insult":    {"blameworthiness": 0.80, "undesirability": 0.70, "arousal": 0.60},
     "pressure":  {"undesirability": 0.60, "blameworthiness": 0.30, "arousal": 0.50, "expectedness": 0.30},
+    # v0.10.0+: bot's own proactive reply. Calibrated so occ_static /
+    # occ_heuristic modes produce the same dimension deltas as the
+    # direct GROUP_SIGNAL_WEIGHTS row above:
+    #   arousal  = 0.50 × 0.10 (arousal appraisal)  +  0.17 × 0.04 (novelty side) ≈ +0.057
+    #   curiosity = 0.17 × 0.12 (novelty appraisal)                         ≈ +0.020
+    # Tiny +0.007 arousal drift is acceptable — same calibration
+    # tolerance as ``mention`` between direct and occ.
+    "self_reply": {"arousal": 0.50, "novelty": 0.17},
     "silence":   {"suppress_arousal": 0.40, "suppress_novelty": 0.30},
     "success":   {"desirability": 0.70, "arousal": 0.40, "praiseworthiness": 0.40},
     "failure":   {"undesirability": 0.60, "arousal": 0.30, "novelty": 0.40},

@@ -298,6 +298,132 @@ def test_to_text_part_works_on_empty_scope() -> None:
 
 
 # ----------------------------------------------------------------------
+# self_reply signal (v0.10.0+)
+# ----------------------------------------------------------------------
+
+
+def test_self_reply_signal_is_listed() -> None:
+    """``self_reply`` must be a valid signal exposed by signal_names()
+    so TalkWillingnessState / apply_self_reply_signal can use it
+    without raising ValueError.
+    """
+    plugin = _make_plugin()
+    assert "self_reply" in plugin.list_signals()
+
+
+def test_self_reply_only_affects_group_arousal_curiosity() -> None:
+    """``self_reply`` must NOT touch any relation dimension. The whole
+    point of this signal is to break the social_context feedback loop:
+    if it raised affection/trust, social_context would amplify its
+    own proactivity decision on the next round.
+    """
+    plugin = _make_plugin()
+    # Seed a relation snapshot so we have a "before" to compare.
+    plugin.apply_signal("g", "u", "praise", intensity=1.0)
+    before_view = plugin.get_combined_state("g", "u")
+    before_relation = before_view.relation
+
+    plugin.apply_signal("g", "u", "self_reply", intensity=1.0)
+    after_view = plugin.get_combined_state("g", "u")
+    after_relation = after_view.relation
+
+    # Group arousal / curiosity rose.
+    assert after_view.group.arousal > before_view.group.arousal - 1e-6
+    assert after_view.group.curiosity > before_view.group.curiosity - 1e-6
+    # Group last_signal updated to mark the application.
+    assert after_view.group.last_signal == "self_reply"
+    # Relation is byte-identical — no trust / affection / irritation /
+    # familiarity drift whatsoever.
+    assert after_relation.trust == before_relation.trust
+    assert after_relation.affection == before_relation.affection
+    assert after_relation.irritation == before_relation.irritation
+    assert after_relation.familiarity == before_relation.familiarity
+
+
+def test_self_reply_layer_weight_is_relation_zero() -> None:
+    """SIGNAL_LAYER_WEIGHTS['self_reply'] must be (1.0, 0.0) so the
+    dispatcher fully routes the signal to the group layer with no
+    participation in the relation layer. Mirrors silence's split.
+    """
+    from emotion_engine import SIGNAL_LAYER_WEIGHTS
+
+    assert SIGNAL_LAYER_WEIGHTS["self_reply"] == (1.0, 0.0)
+
+
+def test_self_reply_appraisal_profile_calibrated_to_direct() -> None:
+    """For occ_static / occ_heuristic modes, the appraisal profile
+    must produce dimension deltas close to the direct GROUP_SIGNAL_WEIGHTS
+    row. Drift of < 0.02 per dimension is acceptable (same tolerance
+    as ``mention``).
+    """
+    from emotion_engine import SIGNAL_APPRAISAL_PROFILES
+    from emotion_engine.defaults import (
+        APPRAISAL_TO_DIMENSION_GROUP,
+        GROUP_SIGNAL_WEIGHTS,
+    )
+
+    profile = SIGNAL_APPRAISAL_PROFILES["self_reply"]
+    direct = GROUP_SIGNAL_WEIGHTS["self_reply"]
+
+    # Compute occ-derived deltas by walking the appraisal profile
+    # through APPRAISAL_TO_DIMENSION_GROUP.
+    occ_group: dict[str, float] = {}
+    for appraisal, weight in profile.items():
+        if appraisal not in APPRAISAL_TO_DIMENSION_GROUP:
+            continue
+        for dim, mult in APPRAISAL_TO_DIMENSION_GROUP[appraisal].items():
+            occ_group[dim] = occ_group.get(dim, 0.0) + weight * mult
+
+    # Compare the two dimensions the direct table cares about.
+    for dim in ("arousal", "curiosity"):
+        direct_val = direct.get(dim, 0.0)
+        occ_val = occ_group.get(dim, 0.0)
+        assert abs(direct_val - occ_val) < 0.02, (
+            f"self_reply {dim}: direct={direct_val}, occ={occ_val}, "
+            f"drift={abs(direct_val - occ_val):.3f}"
+        )
+
+
+# ----------------------------------------------------------------------
+# build_prompt_block alignment with on_llm_request (v0.10.0+ fix)
+# ----------------------------------------------------------------------
+
+
+def test_build_prompt_block_honors_template_alignment() -> None:
+    """The plugin's ``build_prompt_block`` method must produce the
+    same content as ``on_llm_request`` for the same (scope, user_id,
+    template) tuple. Prior to v0.10.0, the two entry points drifted:
+    on_llm_request read ``emotion_block_template``, build_prompt_block
+    didn't.
+    """
+    plugin = _make_plugin(
+        emotion_block_template="## Custom\nscope={scope}\n",
+    )
+    plugin.apply_signal("g", "u", "technical", intensity=1.0)
+    block = plugin.build_prompt_block("g", "u")
+    assert "## Custom" in block
+    assert "## Bot Emotion State" not in block  # default template marker absent
+
+
+def test_build_prompt_block_and_to_text_part_use_same_template() -> None:
+    """Both methods must read ``emotion_block_template`` consistently —
+    otherwise plugins switching from one to the other would see silent
+    output drift.
+    """
+    plugin = _make_plugin(
+        emotion_block_template="## Aligned\nscope={scope}\n",
+    )
+    plugin.apply_signal("g", "u", "technical", intensity=1.0)
+
+    str_block = plugin.build_prompt_block("g", "u")
+    part = plugin.to_text_part("g", "u")
+
+    assert "## Aligned" in str_block
+    assert "## Aligned" in part.text
+    assert str_block.strip() == part.text.strip()
+
+
+# ----------------------------------------------------------------------
 # Normalization
 # ----------------------------------------------------------------------
 
