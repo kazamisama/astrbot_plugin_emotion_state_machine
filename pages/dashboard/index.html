@@ -338,6 +338,21 @@
 
     <!-- Stats row -->
     <section class="stat-grid">
+      <div class="stat-card" id="energy-card">
+        <div class="stat-icon" style="background: var(--accent-soft); color: var(--accent)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="6" width="18" height="11" rx="2" />
+            <line x1="23" y1="13" x2="23" y2="10" />
+            <line x1="4" y1="10" x2="7" y2="10" stroke-width="1.5" />
+            <line x1="4" y1="13" x2="7" y2="13" stroke-width="1.5" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-energy">—</div>
+          <div class="stat-label">Bot 精力</div>
+          <div class="energy-bar-bg"><div class="energy-bar-fg" id="energy-bar"></div></div>
+        </div>
+      </div>
       <div class="stat-card">
         <div class="stat-icon" style="background: var(--accent-soft); color: var(--accent)">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -384,21 +399,6 @@
         <div class="stat-body">
           <div class="stat-value" id="stat-version">—</div>
           <div class="stat-label">插件版本</div>
-        </div>
-      </div>
-      <div class="stat-card" id="energy-card">
-        <div class="stat-icon" style="background: var(--accent-soft); color: var(--accent)">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1" y="6" width="18" height="11" rx="2" />
-            <line x1="23" y1="13" x2="23" y2="10" />
-            <line x1="4" y1="10" x2="7" y2="10" stroke-width="1.5" />
-            <line x1="4" y1="13" x2="7" y2="13" stroke-width="1.5" />
-          </svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value" id="stat-energy">—</div>
-          <div class="stat-label">Bot 精力</div>
-          <div class="energy-bar-bg"><div class="energy-bar-fg" id="energy-bar"></div></div>
         </div>
       </div>
     </section>
