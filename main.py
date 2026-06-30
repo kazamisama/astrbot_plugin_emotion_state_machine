@@ -295,7 +295,7 @@ class TalkWillingnessState:
         # v0.10.0+ optional modulation factors. Both default to 1.0
         # (neutral) so behavior is unchanged when the inputs are
         # absent (no energy system registered / no active_users info).
-        net_charge *= self._energy_factor() * self._crowd_factor(group_view)
+        net_charge *= self._energy_factor(scope) * self._crowd_factor(group_view)
         state.W += net_charge
 
         # Threshold decision — also mutates state.consecutive_apply
@@ -377,28 +377,28 @@ class TalkWillingnessState:
     # Optional modulation factors (v0.10.0+, opt-in via config)
     # ------------------------------------------------------------------
 
-    def _energy_factor(self) -> float:
+    def _energy_factor(self, scope: str | None = None) -> float:
         """v0.10.0+ energy modulation.
 
         Maps a 0..1 "bot energy" reading (from the optional
         energy_getter callable passed to ``__init__``) to a multiplier
-        on net_charge in ``[0.5, 1.0]``. Energy=1.0 → factor 1.0
-        (no modulation); energy=0.0 → factor 0.5 (half accumulation).
+        on net_charge in ``[0.06, 0.96]``. Sigmoid mapping with
+        steepness k=6 centred at 0.45.
+
+        ``scope`` is forwarded to ``self._energy(scope)`` so per-scope
+        energy buckets work when ``energy_per_scope`` is True.
 
         If no energy_getter is registered, ``self._energy`` returns
-        1.0 by default → factor=1.0 → no effect on accumulation.
+        1.0 by default → this method returns 0.96 (near-neutral).
         """
         try:
-            energy = float(self._energy())
+            energy = float(self._energy(scope))
         except Exception:
-            # Defensive: any failure in the energy source must NOT
-            # break the tick path. Fall back to neutral.
-            return 1.0
+            return 1.0 / (1.0 + math.exp(-6.0 * (1.0 - 0.45)))
         if not math.isfinite(energy):
-            return 1.0
-        # Clamp to [0, 1] before mapping.
+            return 1.0 / (1.0 + math.exp(-6.0 * (1.0 - 0.45)))
         energy = max(0.0, min(1.0, energy))
-        return 0.5 + energy * 0.5
+        return 1.0 / (1.0 + math.exp(-6.0 * (energy - 0.45)))
 
     def _crowd_factor(self, view: Any) -> float:
         """v0.10.0+ crowd-size modulation.
@@ -515,6 +515,13 @@ class EmotionStateMachineStar(Star):
         # (handled in on_scope_deleted).
         self._last_user_msg_ts: dict[str, float] = {}
         self._user_turn_ts: dict[str, list[float]] = {}
+        # v0.10.x+: internal bot energy model — per-scope (or global)
+        # recharge model. Dicts keyed by scope; "__global__" used when
+        # energy_per_scope is False. TalkWillingnessState.tick passes
+        # scope to _energy_factor → _get_bot_energy(scope).
+        self._bot_energy: dict[str, float] = {}
+        self._bot_energy_last_tick: dict[str, float] = {}
+        self._energy_per_scope = self._cfg_bool("energy_per_scope", False)
         # Register Dashboard routes FIRST so they remain available even
         # if _load_state() raises (e.g. corrupt JSON). The handlers
         # reference self.machine which is created above.
@@ -1534,6 +1541,7 @@ class EmotionStateMachineStar(Star):
                 f"failed: {exc!r}"
             )
             return False
+        self._bot_energy[self._energy_key(scope)] = max(0.0, self._bot_energy.get(self._energy_key(scope), 1.0) - intensity * 0.6)
         return True
 
     def _cleanup_self_reply_tracking(self, scope: str) -> None:
@@ -1557,48 +1565,52 @@ class EmotionStateMachineStar(Star):
         turn_log = getattr(self, "_user_turn_ts", None)
         if turn_log is not None:
             turn_log.pop(scope, None)
+        for d in ("_bot_energy", "_bot_energy_last_tick"):
+            d_ = getattr(self, d, None)
+            if d_ is not None:
+                d_.pop(scope, None)
 
-    def _get_bot_energy(self) -> float:
-        """v0.10.0+ optional hook: query a registered "energy" star for
-        the bot's current energy reading.
+    def _energy_key(self, scope: str | None = None) -> str:
+        """Resolve the energy dict key: per-scope or global fallback."""
+        return scope if self._energy_per_scope and scope else "__global__"
 
-        Returns a value in ``[0.0, 1.0]``. Convention:
+    def _get_bot_energy(self, scope: str | None = None) -> float:
+        """Internal bot energy model — self-contained, no external plugin.
 
-        - ``1.0`` means "fully rested / neutral" → no modulation on
-          self-reply accumulation (TalkWillingness treats 1.0 as the
-          identity multiplier).
-        - ``0.0`` means "fully depleted" → TalkWillingness halves the
-          accumulation rate so bot is less likely to self-reply when
-          tired.
+        Energy recovers at ~0.01 per second when idle (full recharge
+        ~100s). Consumed by 0.08*intensity per self-reply signal app.
+        Range [0.0, 1.0].
 
-        If no ``astrbot_plugin_energy_system`` star is registered, this
-        returns ``1.0`` (neutral) so behavior is bit-identical to
-        pre-extension versions. Any exception during lookup is caught
-        and falls back to 1.0 — the energy hook must never break the
-        self-reply decision path.
+        When ``energy_per_scope`` is True, ``scope`` selects the
+        per-group energy bucket; otherwise ``"__global__"`` is used.
+
+        Callable passed to TalkWillingnessState as ``energy_getter``;
+        invoked from ``_energy_factor(scope)`` which forwards the
+        scope parameter.
         """
-        # Lazy import to avoid a hard dependency on a specific plugin
-        # name at module load time.
-        try:
-            energy_star = self.context.get_registered_star(
-                "astrbot_plugin_energy_system",
-            )
-        except Exception:
-            return 1.0
-        if energy_star is None:
-            return 1.0
-        # Convention: the energy star exposes a `get_bot_energy()` method
-        # returning a float in [0, 1]. If it doesn't, fall back to 1.0.
-        getter = getattr(energy_star, "get_bot_energy", None)
-        if not callable(getter):
-            return 1.0
-        try:
-            val = float(getter())
-        except Exception:
-            return 1.0
-        if not math.isfinite(val):
-            return 1.0
-        return max(0.0, min(1.0, val))
+        key = scope if self._energy_per_scope and scope else "__global__"
+        now = time.time()
+        last = self._bot_energy_last_tick.get(key, now)
+        self._bot_energy_last_tick[key] = now
+        cur = self._bot_energy.get(key, 1.0)
+        cur = 1.0 - (1.0 - cur) * math.exp(-0.02 * (now - last))
+        self._bot_energy[key] = cur
+        return cur
+
+    def get_bot_energy(self, scope: str | None = None) -> float:
+        """Public access to the bot's current energy level (v0.10.x+).
+
+        Range [0, 1]: 1.0 = fully rested, 0.0 = fully depleted.
+        Energy recovers at ~0.01/sec when idle and is consumed by
+        0.08*intensity per self-reply signal application.
+
+        ``scope`` selects a per-group energy bucket when
+        ``energy_per_scope`` is True; omit for global average.
+
+        Other plugins can use this to modulate their own proactive
+        behavior based on the bot's current "stamina".
+        """
+        return self._get_bot_energy(scope)
 
     def render_state_text(self, scope: str, user_id: str = "") -> str:
         """Human-readable rendering of the current state, identical to the
@@ -1660,6 +1672,7 @@ class EmotionStateMachineStar(Star):
                 "filter_bot_default": self._cfg_bool("filter_bot_default", True),
                 "active_window_seconds": machine.active_window_seconds,
                 "bot_persona": self._bot_persona_name(),
+                "bot_energy": self._get_bot_energy(),
             }
 
         async def full_state():

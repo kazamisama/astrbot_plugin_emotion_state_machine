@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+## v0.10.1 - 2026-06-30
+
+### Added
+
+- **内置 bot 精力模型**（`main.py`）：自给自足的恢复/消耗模型，不再依赖
+  外部 `astrbot_plugin_energy_system` 插件。指数恢复曲线（~100s 回满），
+  消耗量与 TalkWillingness intensity 挂钩（憋得越狠消耗越多），
+  sigmoid 映射（精力耗尽时近乎封停 W 累积）。
+- **`get_bot_energy(scope=None)` 公开 API**：其他插件可读取 bot
+  当前精力值 [0,1]，按自身逻辑调节主动行为。
+- **精力按群聊隔离**：`energy_per_scope` 配置（默认 false）。开启后
+  每个群独立维护精力桶——A 群把 bot 说累了不影响 B 群。
+  `_energy_factor`、`tick()` 调用链全程透传 scope。
+- **Dashboard 精力显示**：第 5 张 stat card，实时百分比 + 进度条 +
+  三色状态（绿≥70% / 琥珀 30-69% / 红<30%）。
+- **`_PUBLIC_API.md` 全文中文化**：新增 `get_bot_energy()` 条目，
+  stability tier 保留。
+
+### Changed
+
+- **`_get_bot_energy`**：移除 `astrbot_plugin_energy_system` 懒导入，
+  改为内部自恢复模型。
+- **`_energy_factor`**：线性映射 → sigmoid，精力归零时压制更强。
+- **`apply_self_reply_signal`**：固定消耗 0.08 → `intensity * 0.6`。
+
+### Internal
+
+- `_bot_energy` / `_bot_energy_last_tick` 从 float 改为 dict。
+- `_cleanup_self_reply_tracking` 同步清理精力条目。
+- health API 返回 `bot_energy` 字段。
+
 ## v0.10.0 - 2026-06-27
 
 ### Added

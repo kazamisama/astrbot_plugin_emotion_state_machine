@@ -161,11 +161,16 @@
   .side-stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; display: flex; align-items: center; box-shadow: var(--shadow-1); }
   .side-stat-num { font-size: 1.5rem; font-weight: 700; color: var(--text); margin-right: 14px; }
   .side-stat-label { font-size: 0.78rem; color: var(--text-2); }
-  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-1); }
   .stat-icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
   .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--text); }
   .stat-label { font-size: 0.75rem; color: var(--text-2); margin-top: 2px; }
+  .energy-bar-bg { margin-top: 4px; height: 4px; background: var(--border-soft); border-radius: 2px; overflow: hidden; }
+  .energy-bar-fg { height: 100%; border-radius: 2px; background: var(--green); transition: width 0.6s ease; }
+  #energy-card.energy-low .energy-bar-fg { background: var(--red); }
+  #energy-card.energy-mid .energy-bar-fg { background: var(--amber); }
+  #energy-card.energy-high .energy-bar-fg { background: var(--green); }
   .section { margin-bottom: 28px; }
   .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
   .section-head h2 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text); }
@@ -379,6 +384,21 @@
         <div class="stat-body">
           <div class="stat-value" id="stat-version">—</div>
           <div class="stat-label">插件版本</div>
+        </div>
+      </div>
+      <div class="stat-card" id="energy-card">
+        <div class="stat-icon" style="background: var(--accent-soft); color: var(--accent)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="6" width="18" height="11" rx="2" />
+            <line x1="23" y1="13" x2="23" y2="10" />
+            <line x1="4" y1="10" x2="7" y2="10" stroke-width="1.5" />
+            <line x1="4" y1="13" x2="7" y2="13" stroke-width="1.5" />
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-energy">—</div>
+          <div class="stat-label">Bot 精力</div>
+          <div class="energy-bar-bg"><div class="energy-bar-fg" id="energy-bar"></div></div>
         </div>
       </div>
     </section>

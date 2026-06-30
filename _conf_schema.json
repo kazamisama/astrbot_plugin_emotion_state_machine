@@ -202,6 +202,12 @@
                 "hint": "scope 连续触发 self_reply 达到此次数后，下一次 tick 强制回落 W（× 0.5）且不触发。用户消息到达时此计数会重置。",
                 "type": "int",
                 "default": 5
+            },
+            "energy_per_scope": {
+                "description": "精力按群聊隔离（v0.10.x+）",
+                "hint": "开启后每个群聊独立计算 bot 精力——A 群把 bot 说累了不影响 B 群。关闭时（默认）所有群共享同一精力池。",
+                "type": "bool",
+                "default": false
             }
         }
     }

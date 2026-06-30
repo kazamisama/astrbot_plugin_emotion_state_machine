@@ -213,6 +213,16 @@
     set("stat-users", totalUsers);
     set("stat-signals", (h && h.signal_count) || "—");
     set("stat-version", (h && h.version) || "—");
+    // v0.10.x+: bot energy display
+    var energy = (h && h.bot_energy != null) ? Math.max(0, Math.min(1, Number(h.bot_energy))) : 0;
+    set("stat-energy", energy ? (energy * 100).toFixed(0) + "%" : "—");
+    var eBar = document.getElementById("energy-bar");
+    if (eBar) { eBar.style.width = (energy * 100).toFixed(0) + "%"; }
+    var eCard = document.getElementById("energy-card");
+    if (eCard) {
+      eCard.classList.remove("energy-low", "energy-mid", "energy-high");
+      eCard.classList.add(energy < 0.3 ? "energy-low" : energy < 0.7 ? "energy-mid" : "energy-high");
+    }
     var modeEl = document.getElementById("side-mode");
     if (modeEl) modeEl.textContent = (h && h.appraisal_mode) || "—";
     var subEl = document.getElementById("brand-sub");

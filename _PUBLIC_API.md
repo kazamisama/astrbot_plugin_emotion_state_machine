@@ -1,137 +1,151 @@
-# ESM Public API Reference
+# ESM 公开 API 参考
 
-> v0.10.0+ — explicit public API contract for plugin-to-plugin interop.
+> v0.10.0+ — 跨插件互操作契约文档。
 >
-> Other plugins get an ESM instance via `context.get_registered_star("astrbot_plugin_emotion_state_machine")` and call the methods documented here. Methods NOT listed here are implementation details and may change without notice.
+> 其他插件通过 `context.get_registered_star("astrbot_plugin_emotion_state_machine")` 获取 ESM 实例，然后调用本文档列出的方法。**未列出的方法均为内部实现细节**，可能随时变动。
 
-## Stability Tiers
+## 稳定性分级
 
-| Tier | Meaning |
+| 等级 | 含义 |
 |---|---|
-| **Stable** | Backward-compatible through v0.x. May gain new args; won't break signatures. |
-| **New Stable** | Added in v0.10.0; same stability promise going forward. |
-| **Experimental** | May change between minor versions. Prefer not to rely on unless you also bump ESM with your plugin. |
-| **Deprecated** | Will be removed in v0.11+. Migrate now. |
+| **稳定（Stable）** | v0.x 期间向后兼容。可增参数，不改签名。 |
+| **新增稳定（New Stable）** | v0.10.0 新增，后续保持同样稳定性承诺。 |
+| **实验性（Experimental）** | 可能在小版本间变动。若非必要勿依赖，除非你的插件也随 ESM 同步升级。 |
+| **已废弃（Deprecated）** | v0.11+ 移除。请尽快迁移。 |
 
 ---
 
-## Reading state
+## 读取状态
 
-### `get_scope(event) -> str` — Stable
+### `get_scope(event) -> str` — 稳定
 
-Compute the canonical scope key for an AstrBot event. **Always use this** — other plugins must not derive scope from `event.get_group_id()` directly, or they'll land on a different namespace than the built-in observer.
+根据 AstrBot 事件计算规范化的 scope 键。**务必使用此方法**——其他插件不得通过 `event.get_group_id()` 自行推导 scope，否则可能与内置 observer 落点不一致。
 
 ```python
 machine = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
 scope = machine.get_scope(event)
 ```
 
-### `get_combined_state(scope, user_id="", *, apply_decay=True) -> CombinedEmotionView` — Stable
+### `get_combined_state(scope, user_id="", *, apply_decay=True) -> CombinedEmotionView` — 稳定
 
-Full snapshot: group + relation + combined label. **This is the main read API.** Other plugins should prefer this over the lower-level helpers.
+完整快照：群氛围 + 用户关系 + 综合标签。**这是主要的读取 API**。其他插件应优先使用此方法，而非低层辅助方法。
 
-### `get_group_state(scope, *, apply_decay=True) -> GroupEmotionSnapshot` — Stable
+### `get_group_state(scope, *, apply_decay=True) -> GroupEmotionSnapshot` — 稳定
 
-Just the group atmosphere (valence / arousal / stress / curiosity / PAD). Use when you don't care about per-user relation.
+仅群氛围（valence / arousal / stress / curiosity / PAD）。不需要用户关系时使用。
 
-### `get_relation_state(scope, user_id, *, apply_decay=True) -> UserRelationSnapshot` — Stable
+### `get_relation_state(scope, user_id, *, apply_decay=True) -> UserRelationSnapshot` — 稳定
 
-Just the per-user relation (trust / affection / irritation / familiarity).
+仅用户关系（trust / affection / irritation / familiarity）。
 
-### `render_state_text(scope, user_id="") -> str` — Stable
+### `get_bot_energy() -> float` — 新增稳定（v0.10.x+）
 
-Human-readable rendering, identical to the `/emotion_state` command output. For debug/log lines.
+返回 bot 当前的精力值，范围 `[0.0, 1.0]`。精力以 ~0.01/秒 的速率缓慢恢复（100 秒回满），每次 self_reply signal 实际触发消耗 0.08。
 
-### `list_signals() -> list[str]` — Stable
+其他插件可以读取此值来按 bot 疲劳程度调节自己的主动行为决策。
 
-All valid signal names. Use to validate before `apply_signal`.
+```python
+esm = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
+if esm and hasattr(esm, "get_bot_energy"):
+    stamina = esm.get_bot_energy()
+    # stamina == 1.0 → 精力充沛，可以活跃
+    # stamina < 0.3  → 疲劳，建议少说话
+```
 
-### `is_signal_enabled(signal) -> bool` — Stable
+### `render_state_text(scope, user_id="") -> str` — 稳定
 
-Case-insensitive check against `disabled_signals` config. Returns `False` for unknown signals (defensive default).
+人类可读的渲染输出，与 `/emotion_state` 命令输出一致。适用于调试/日志行。
 
-### `list_disabled_signals() -> list[str]` — Stable
+### `list_signals() -> list[str]` — 稳定
 
-Currently-disabled signal names (sorted, lowercased).
+所有合法的 signal 名称。用于在 `apply_signal` 调用前做校验。
+
+### `is_signal_enabled(signal) -> bool` — 稳定
+
+大小写不敏感的检查（是否在 `disabled_signals` 配置中）。对未知 signal 返回 `False`（防御性默认）。
+
+### `list_disabled_signals() -> list[str]` — 稳定
+
+当前被禁用的 signal 名称列表（已小写排序）。
 
 ---
 
-## Building prompt blocks
+## 构建 prompt 块
 
-### `build_prompt_block(scope, user_id="") -> str` — Stable
+### `build_prompt_block(scope, user_id="") -> str` — 稳定
 
-Raw string for the emotion block. Honors `emotion_block_template` config (aligned with `on_llm_request` in v0.10.0). Returns the same content `on_llm_request` injects.
+情绪块的原始字符串。遵循 `emotion_block_template` 配置（v0.10.0 与 `on_llm_request` 对齐）。返回内容与 `on_llm_request` 注入内容一致。
 
-### `to_text_part(scope, user_id="") -> TextPart` — New Stable (v0.10.0+)
+### `to_text_part(scope, user_id="") -> TextPart` — 新增稳定（v0.10.0+）
 
-The emotion block as a `TextPart` (with `.mark_as_temp()` chained). Use this from other plugins that build their own `request.extra_user_content_parts` lists. Each plugin's block lands as an independent TextPart rather than getting string-concatenated.
+情绪块的 `TextPart` 版本（已链式调用 `.mark_as_temp()`）。供其他自行构建 `request.extra_user_content_parts` 列表的插件使用。每个插件的 block 作为独立 TextPart 落位，而非字符串拼接合并。
 
 ```python
-# social_context judge channel
+# social_context judge 通道
 extra_parts.append(esm.to_text_part(scope, user_id))
 ```
 
 ---
 
-## Writing state
+## 写入状态
 
-### `observe_text(scope, text, *, user_id="", mentioned=False, update_relation=True) -> CombinedEmotionView` — Stable
+### `observe_text(scope, text, *, user_id="", mentioned=False, update_relation=True) -> CombinedEmotionView` — 稳定
 
-Infer signals from raw text and apply. Same engine `observe_message` uses.
+从原始文本推断 signal 并应用。与 `observe_message` 使用同一引擎。
 
-### `apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external") -> CombinedEmotionView` — Stable
+### `apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external") -> CombinedEmotionView` — 稳定
 
-Strict variant — raises `ValueError` on unknown signal. State is persisted on success.
+严格变体——未知 signal 会抛出 `ValueError`。成功后状态持久化。
 
-### `try_apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external") -> CombinedEmotionView | None` — Stable
+### `try_apply_signal(scope, user_id, signal, *, intensity=1.0, reason="external") -> CombinedEmotionView | None` — 稳定
 
-Safe variant — returns `None` on `ValueError` / `TypeError` instead of raising. Use in hot paths.
+安全变体——`ValueError` / `TypeError` 返回 `None` 而非抛出。适用于频率较高的调用路径。
 
-### `apply_self_reply_signal(event) -> bool` — New Stable (v0.10.0+)
+### `apply_self_reply_signal(event) -> bool` — 新增稳定（v0.10.0+）
 
-Called by `social_context` (or any proactive-decider plugin) right after deciding the bot should reply without user @/wake. Consults the TalkWillingnessState accumulator and applies a `self_reply` signal iff the model decides to.
+由 `social_context`（或其他主动回复决策者）在 bot 决定回复后立即调用。内部委托给 `TalkWillingnessState` 累积模型决定是否实际应用 `self_reply` signal。
 
-**Contract**:
-- Returns `True` iff a `self_reply` signal was actually applied to the bot's state.
-- Returns `False` (silently, no exception) for: disabled config, user @-triggered, outside trigger zone, reversal zone, consecutive-apply cap, disabled signal, scope-not-found, internal error.
-- Never breaks the caller's flow — failures are caught and logged at `debug`.
+**调用约定**：
+- 返回 `True` 当且仅当 `self_reply` signal 确实被应用到 bot 的状态机
+- 以下情况静默返回 `False`（不抛异常）：配置禁用、用户 @ 触发、非触发区间、反噬区间、连续触发上限、signal 被禁用、scope 不存在、内部错误
+- 永不打断调用方流程——异常被捕获并记入 `debug` 日志
 
-The signal applied is `self_reply` (only affects group `arousal` and `curiosity`; does NOT touch relation-layer dimensions — by design, to break the social_context ↔ ESM feedback loop).
+应用的 signal 为 `self_reply`（仅影响群氛围 `arousal` 和 `curiosity`；**不碰关系层维度**——这是有意为之，目的在于切断 social_context ↔ ESM 反馈环）。
 
 ```python
-# social_context side
+# social_context 侧
 esm = self.context.get_registered_star("astrbot_plugin_emotion_state_machine")
 if esm and hasattr(esm, "apply_self_reply_signal"):
     await esm.apply_self_reply_signal(event)
 ```
 
-### `decay(scope, *, now=None) -> GroupEmotionSnapshot` — Experimental
+### `decay(scope, *, now=None) -> GroupEmotionSnapshot` — 实验性
 
-Manually advance the decay clock. Useful for tests and time-traveling replays.
+手动推进衰减时钟。适用于测试和时间旅行回放。
 
-### `reset_scope(scope) -> GroupEmotionSnapshot` — Stable
+### `reset_scope(scope) -> GroupEmotionSnapshot` — 稳定
 
-Reset a scope entirely (group + all relations). Persists. Mirrors `/emotion_reset` command. In v0.10.0+ also drops the per-scope TalkWillingness state.
+完全重置一个 scope（群组 + 所有关系）。持久化。效果等同于 `/emotion_reset` 命令。v0.10.0+ 同时清除该 scope 的 TalkWillingness 状态。
 
-### `force_decay(scope, *, now=None) -> GroupEmotionSnapshot` — Stable
+### `force_decay(scope, *, now=None) -> GroupEmotionSnapshot` — 稳定
 
-Force a decay pass + persist. Same as `decay` but always persists.
+强制执行衰减 + 持久化。与 `decay` 相同但总是落盘。
 
-### `prune_cold_state() -> dict[str, int]` — Stable
+### `prune_cold_state() -> dict[str, int]` — 稳定
 
-Prune cold groups and relations. Returns `{"groups_pruned": int, "relations_pruned": int}`. Persists only when something was actually pruned.
+清理超时的群组与关系。返回 `{"groups_pruned": int, "relations_pruned": int}`。仅在实际清理了数据时才持久化。
 
-### `set_appraisal_mode(mode) -> None` — Stable
+### `set_appraisal_mode(mode) -> None` — 稳定
 
-Switch appraisal mode at runtime. `mode` ∈ `"direct"` / `"occ_static"` / `"occ_heuristic"`.
+运行时切换评价模式。`mode` ∈ `"direct"` / `"occ_static"` / `"occ_heuristic"`。
 
 ---
 
-## Class-level (not instance-bound)
+## 类级别（非实例绑定）
 
-### `TalkWillingnessState` (module-level) — New Stable (v0.10.0+)
+### `TalkWillingnessState`（模块级） — 新增稳定（v0.10.0+）
 
-Pure-logic self-reply accumulation state machine. Importable directly without standing up the plugin. See the docstring on the class for the full interface.
+纯逻辑的 self-reply 累积状态机。可直接 import 而不需要启动插件实例。完整接口见类的 docstring。
 
 ```python
 from main import TalkWillingnessState
@@ -141,45 +155,48 @@ W, should_apply, intensity = tw.tick(...)
 
 ---
 
-## Removed / not exposed
+## 已移除 / 不对外暴露
 
-These are implementation details. Don't call them from other plugins:
+以下为内部实现细节。请勿从其他插件调用：
 
-- `_inject_emotion_block` (module-level helper for `on_llm_request`)
-- `_cfg_str` / `_cfg_float` / `_cfg_bool` / `_cfg_int` / `_cfg_list` (config coercion helpers)
-- `_resolve_event_persona` / `_scope_id` / `_bot_persona_name` (scope derivation)
-- `_save_state` / `_load_state` / `_migrate_scope_ids_if_needed` (persistence)
-- `_register_official_page_api_if_available` (route registration)
-- `_cleanup_self_reply_tracking` (internal cleanup)
-- Any `_` (single-underscore) prefixed method.
+- `_inject_emotion_block`（供 `on_llm_request` 使用的模块级辅助方法）
+- `_cfg_str` / `_cfg_float` / `_cfg_bool` / `_cfg_int` / `_cfg_list`（配置类型转换）
+- `_resolve_event_persona` / `_scope_id` / `_bot_persona_name`（scope 推导）
+- `_save_state` / `_load_state` / `_migrate_scope_ids_if_needed`（持久化）
+- `_register_official_page_api_if_available`（路由注册）
+- `_cleanup_self_reply_tracking`（内部清理）
+- 所有 `_` 前缀（单下划线）的方法
 
 ---
 
-## Version compatibility matrix
+## 版本兼容矩阵
 
-| Plugin combination | Emotion injection | Self-reply signal |
+| 插件组合 | 情绪注入 | Self-reply signal |
 |---|---|---|
-| social_context v0.8.11 + ESM v0.9.x | works (string concat) | not available |
-| social_context v0.8.11 + ESM v0.10.0+ | works (string concat) | works (social_context doesn't call yet) |
-| social_context v0.8.12 + ESM v0.9.x | **broken** (no `to_text_part`) | not available |
-| social_context v0.8.12 + ESM v0.10.0+ | works (`to_text_part`) | works (social_context calls `apply_self_reply_signal`) |
+| social_context v0.8.11 + ESM v0.9.x | ✅（字符串拼接） | ❌ 不可用 |
+| social_context v0.8.11 + ESM v0.10.0+ | ✅（字符串拼接） | ✅（social_context 未调用，但 API 就绪） |
+| social_context v0.8.12 + ESM v0.9.x | **❌ 损坏**（无 `to_text_part`） | ❌ 不可用 |
+| social_context v0.8.12 + ESM v0.10.0+ | ✅（`to_text_part`） | ✅（social_context 调用 `apply_self_reply_signal`） |
 
-**Strong recommendation**: install ESM v0.10.0+ before installing social_context v0.8.12+.
+**强烈建议**：先安装 ESM v0.10.0+，再安装 social_context v0.8.12+。
 
 ---
 
-## What changed in v0.10.0
+## v0.10.0 变更摘要
 
-### Added
-- `to_text_part(scope, user_id) -> TextPart` — counterpart to `build_prompt_block` returning a `TextPart` ready for direct injection.
-- `apply_self_reply_signal(event) -> bool` — entry point for proactive-decider plugins to trigger bot self-reflection emotion signals.
-- `TalkWillingnessState` module-level class — pure-logic brain-inspired accumulator.
-- `self_reply` signal — only affects group `arousal`/`curiosity`, never relation layer.
+### 新增
+- `to_text_part(scope, user_id) -> TextPart` — `build_prompt_block` 的 TextPart 版本，可直接注入
+- `apply_self_reply_signal(event) -> bool` — 供主动回复决策者调用
+- `TalkWillingnessState` 模块级类 — 纯逻辑的脑科学启发累积器
+- `get_bot_energy() -> float` — 公开精力查询接口，自给自足模型，无需外部插件
+- `self_reply` signal — 仅影响群 `arousal`/`curiosity`，不碰关系层
+- `_PUBLIC_API.md`（本文档） — 跨插件 API 契约
 
-### Aligned
-- `build_prompt_block` now honors `emotion_block_template` (previously bypassed it).
+### 对齐
+- `build_prompt_block` 现在遵循 `emotion_block_template` 配置（之前绕过）
 
-### Internal
-- `observe_message` tracks per-scope user message timestamps for the time / turn-density factors.
-- `reset_scope` and HTTP `POST /delete/<scope>` drop TalkWillingness state alongside emotion state.
-- New `self_reply_settings` config section with 7 tunable thresholds.
+### 内部
+- `observe_message` 跟踪每个 scope 的用户消息时间戳，供 TalkWillingness 使用
+- `reset_scope` 和 HTTP `POST /delete/<scope>` 清除 TalkWillingness 状态
+- 新增 `self_reply_settings` 配置 section，含 7 项可调阈值
+- 内置 bot 精力模型：自动恢复 + self_reply 消耗，不含外部插件依赖
